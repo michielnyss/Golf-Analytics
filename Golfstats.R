@@ -447,15 +447,20 @@ launch_condition_triangle <- function(data, club_type, windows_lookup) {
     plot_annotation(title = paste("Launch Condition Triangle -", club_type))
 }
 
-#MAIN 
+
+# ------------------------------
+#              MAIN
+# ------------------------------
 
 
-# load data
+# 1. Data stuff
+
+# 1a. loading
 setwd("C:/Users/michi/anaconda_projects/Golf-Analytics/")
 
 training <- read_excel(
   "data.xlsx",
-  sheet = "Data",
+  sheet = "Michiel",
   range = "A1:AF300"
 )
 
@@ -465,10 +470,16 @@ benchmarkData <- read_excel(
   range = "A1:J13"
 )
 
+club_order <- c("Driver", "3 Wood", "5 Wood", "7 Wood",
+                "5 Iron", "6 Iron", "7 Iron", "8 Iron", "9 Iron",
+                "Gap Wedge", "Pitching Wedge", "Sand Wedge", "Lob Wedge")
 
-# clean data
+
+# 1b. cleaning
+
 garminData <- as.data.frame(training) %>%
-  filter(!if_all(everything(), is.na))
+  filter(!if_all(everything(), is.na)) %>%
+  arrange(factor(`Club Type`, levels = club_order))
 
 garminData["Roll Distance [m]"] <- garminData$`Total Distance [m]` - garminData$`Carry Distance [m]`
 
@@ -477,7 +488,7 @@ ironData <- garminData %>%
   filter(`Club Type` %in% irons)
 
 wedges <- c("Gap Wedge", "Lob Wedge", "Pitching Wedge", "Sand Wedge")
-wedegData <- garminData %>%
+wedgeData <- garminData %>%
   filter(`Club Type` %in% wedges)
 
 woods <- c("Driver", "3 Wood", "5 Wood", "7 Wood")
@@ -487,21 +498,17 @@ woodData <- garminData %>%
 
 # 1. BOXPLOT
 
+# 1a. Distances vs Benchamrk
+
 p1 <- make_boxplot(garminData, "Club Type", "Carry Distance [m]",
-                   title = "Carry distance by club", y_label = "Distance (m)")
+                   title = "Carry distance by club", y_label = "Meters", benchmark = benchmarkData)
 p2 <- make_boxplot(garminData, "Club Type", "Total Distance [m]",
-                   title = "Total distance by club", y_label = "Distance (m)")
+                   title = "Total distance by club", y_label = "Meters")
 p1 / p2
 
-names(garminData)
-make_boxplot(
-  data      = wedegData,
-  x_var     = "Club Type",
-  y_var     = "Roll Distance [m]",
-  title = "Roll Disrance by Club Type (woods) "
-)
+ggsave("graphs/boxplot_distance_by_club.png", plot = p1 / p2, width = 16, height = 10)
 
-# 1b. BOXPLOT – 2D offline mode (carry distance vs lateral miss)
+# 1b. 2D offline mode (carry distance vs lateral miss)
 
 make_boxplot(
   data        = ironData,
@@ -514,30 +521,108 @@ make_boxplot(
   x_label     = "Club  (\u2190 left miss  |  right miss \u2192)"
 )
 
-make_boxplot(
-  data        = wedegData,
-  x_var       = "Club Type",
-  y_var       = "Carry Distance [m]",
-  offline_var = "Carry Deviation Distance [m]",
-  jitter_mode = "offline",
-  title       = "Carry distance & lateral miss – Wedges",
-  y_label     = "Carry distance (m)",
-  x_label     = "Club  (\u2190 left miss  |  right miss \u2192)"
+# 2. Tables
+
+# 2a. Mean values versus Benchmark
+
+meansPivot <- garminData %>%
+  group_by(`Club Type`) %>%
+  summarise(
+    `Club Speed [km/h]`  = mean(`Club Speed [km/h]`,  na.rm = TRUE),
+    `Attack Angle [deg]` = mean(`Attack Angle [deg]`, na.rm = TRUE),
+    `Ball Speed [km/h]`  = mean(`Ball Speed [km/h]`,  na.rm = TRUE),
+    `Smash Factor`       = mean(`Smash Factor`,        na.rm = TRUE),
+    `Launch Angle [deg]` = mean(`Launch Angle [deg]`, na.rm = TRUE),
+    `Backspin [rpm]`     = mean(`Backspin [rpm]`,     na.rm = TRUE),
+    `Apex Height [m]`    = mean(`Apex Height [m]`,    na.rm = TRUE),
+    `Carry Distance [m]` = mean(`Carry Distance [m]`, na.rm = TRUE)
+  )
+
+# ── 2a. Join my means with benchmark ─────────────────────────────────────────
+
+my_long <- meansPivot %>%
+  pivot_longer(-`Club Type`, names_to = "Metric", values_to = "You")
+
+bm_long <- benchmarkData %>%
+  pivot_longer(-`Club Type`, names_to = "Metric", values_to = "Benchmark")
+
+comparison <- my_long %>%
+  inner_join(bm_long, by = c("Club Type", "Metric")) %>%
+  mutate(
+    Delta      = You - Benchmark,
+    PctDiff    = (You - Benchmark) / Benchmark * 100,
+    `Club Type` = factor(`Club Type`, levels = club_order)
+  ) %>%
+  arrange(`Club Type`, Metric)
+
+# ── 2b. Formatted comparison table ───────────────────────────────────────────
+
+comparison_table <- comparison %>%
+  mutate(
+    You       = round(You, 1),
+    Benchmark = round(Benchmark, 1),
+    Delta     = round(Delta, 1),
+    PctDiff   = paste0(round(PctDiff, 1), "%")
+  ) %>%
+  rename(`% Diff` = PctDiff, `Δ` = Delta)
+
+print(comparison_table, n = Inf)
+
+# ── 2c. Heatmap: % vs benchmark per club × metric ─────────────────────────────
+
+metric_labels <- c(
+  "Club Speed [km/h]"  = "Club Speed",
+  "Ball Speed [km/h]"  = "Ball Speed",
+  "Carry Distance [m]" = "Carry Dist",
+  "Launch Angle [deg]" = "Launch Angle",
+  "Attack Angle [deg]" = "Attack Angle",
+  "Smash Factor"       = "Smash Factor",
+  "Backspin [rpm]"     = "Backspin",
+  "Apex Height [m]"    = "Apex Height"
 )
 
-make_boxplot(
-  data        = woodData,
-  x_var       = "Club Type",
-  y_var       = "Carry Distance [m]",
-  offline_var = "Carry Deviation Distance [m]",
-  jitter_mode = "offline",
-  title       = "Carry distance & lateral miss – Woods",
-  y_label     = "Carry distance (m)",
-  x_label     = "Club  (\u2190 left miss  |  right miss \u2192)"
-)
+heatmap_data <- comparison %>%
+  mutate(
+    MetricShort = metric_labels[Metric],
+    MetricShort = ifelse(is.na(MetricShort), Metric, MetricShort),
+    label       = sprintf("%+.1f%%", PctDiff)
+  )
+
+p_heatmap <- ggplot(
+  heatmap_data,
+  aes(x = MetricShort, y = fct_rev(`Club Type`), fill = PctDiff)
+) +
+  geom_tile(color = "white", linewidth = 0.6) +
+  geom_text(aes(label = label), size = 3.2, fontface = "bold") +
+  scale_fill_gradient2(
+    low      = "#d73027",
+    mid      = "white",
+    high     = "#1a9850",
+    midpoint = 0,
+    limits   = c(-30, 30),
+    oob      = scales::squish,
+    name     = "% vs\nBenchmark"
+  ) +
+  labs(
+    title    = "My performance vs benchmark",
+    subtitle = "Cell label = absolute delta  ·  Colour = % above (green) / below (red) benchmark",
+    x        = NULL,
+    y        = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.x     = element_text(angle = 30, hjust = 1),
+    panel.grid      = element_blank(),
+    legend.position = "right"
+  )
+
+p_heatmap
+
+ggsave("graphs/heatmap_vs_benchmark.png", p_heatmap, width = 12, height = 8)
 
 
-# 2. PAIRWISE PLOT
+
+# PAIRWISE PLOT
 
 distance_vars <- c(
   "Club Speed [km/h]",
@@ -554,7 +639,7 @@ pairwise_plot(
   title     = "Pairwise relationships by club type"
 )
 
-# 3. SHOT SHAPE ROSE
+# SHOT SHAPE ROSE
 
 shot_shape_rose(
   data         = ironData,
@@ -566,7 +651,7 @@ shot_shape_rose(
 )
 
 
-# 4. Launch Condition Triangle
+#Launch Condition Triangle
 
 club_windows <- list(
   
