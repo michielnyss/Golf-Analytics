@@ -448,6 +448,114 @@ launch_condition_triangle <- function(data, club_type, windows_lookup) {
 }
 
 
+compute_means_table <- function(data, grouper) {
+  numeric_cols <- names(data)[sapply(data, is.numeric)]
+  data %>%
+    group_by(.data[[grouper]]) %>%
+    summarise(across(all_of(numeric_cols), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+}
+
+
+plot_benchmark_heatmap <- function(
+    data_means,
+    benchmark_means,
+    grouper,
+    metric_labels = NULL,
+    title         = "Performance vs benchmark",
+    fill_limits   = NULL,
+    mode          = "absolute"   # "absolute" | "percent" | "hybrid"
+) {
+  shared_cols <- intersect(
+    setdiff(names(data_means),      grouper),
+    setdiff(names(benchmark_means), grouper)
+  )
+
+  my_long <- data_means %>%
+    select(all_of(c(grouper, shared_cols))) %>%
+    pivot_longer(-all_of(grouper), names_to = "Metric", values_to = "You")
+
+  bm_long <- benchmark_means %>%
+    select(all_of(c(grouper, shared_cols))) %>%
+    pivot_longer(-all_of(grouper), names_to = "Metric", values_to = "Benchmark")
+
+  comparison <- my_long %>%
+    inner_join(bm_long, by = c(grouper, "Metric")) %>%
+    mutate(
+      Delta   = You - Benchmark,
+      PctDiff = (You - Benchmark) / Benchmark * 100
+    )
+
+  fill_col <- switch(mode,
+    absolute = "Delta",
+    percent  = "PctDiff",
+    hybrid   = "HybridFill",
+    stop("Unknown mode '", mode, "'. Supported: 'absolute', 'percent', 'hybrid'")
+  )
+
+  if (mode == "hybrid") {
+    comparison <- comparison %>%
+      mutate(
+        HybridFill = ifelse(is.finite(PctDiff), PctDiff, Delta),
+        label      = ifelse(is.finite(PctDiff),
+                            sprintf("%+.1f%%", PctDiff),
+                            sprintf("%+.1f",   Delta))
+      )
+  } else {
+    label_fmt <- switch(mode,
+      absolute = function(x) sprintf("%+.1f",  x),
+      percent  = function(x) sprintf("%+.1f%%", x)
+    )
+    comparison <- comparison %>%
+      mutate(label = label_fmt(.data[[fill_col]]))
+  }
+
+  if (!is.null(metric_labels)) {
+    comparison <- comparison %>%
+      mutate(MetricShort = ifelse(Metric %in% names(metric_labels), metric_labels[Metric], Metric))
+  } else {
+    comparison <- comparison %>%
+      mutate(MetricShort = Metric)
+  }
+
+  # Normalise per metric: 0 = on benchmark, 1 = worst deviation in that metric.
+  # Colour encodes distance from benchmark (green = close, red = far).
+  comparison <- comparison %>%
+    mutate(.fill_raw = .data[[fill_col]]) %>%
+    group_by(Metric) %>%
+    mutate(.fill = {
+      cap_m <- max(abs(.fill_raw), na.rm = TRUE)
+      if (is.na(cap_m) || cap_m == 0) 0 else abs(.fill_raw) / cap_m
+    }) %>%
+    ungroup()
+
+  ggplot(comparison, aes(x = MetricShort, y = fct_rev(.data[[grouper]]), fill = .fill)) +
+    geom_tile(color = "white", linewidth = 0.6) +
+    geom_text(aes(label = label), size = 3.2, fontface = "bold") +
+    scale_fill_gradient(
+      low   = "white",
+      high  = "#d73027",
+      limits = c(0, 1),
+      guide  = "none"
+    ) +
+    labs(
+      title    = title,
+      subtitle = switch(mode,
+        absolute = "Cell = absolute delta  ·  Green = close to benchmark / Red = far from benchmark",
+        percent  = "Cell = % delta  ·  Green = close to benchmark / Red = far from benchmark",
+        hybrid   = "Cell = % delta (absolute where benchmark = 0)  ·  Green = close to benchmark / Red = far from benchmark"
+      ),
+      x        = NULL,
+      y        = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      axis.text.x     = element_text(angle = 30, hjust = 1),
+      panel.grid      = element_blank(),
+      legend.position = "right"
+    )
+}
+
+
 # ------------------------------
 #              MAIN
 # ------------------------------
@@ -467,7 +575,7 @@ training <- read_excel(
 benchmarkData <- read_excel(
   "data.xlsx",
   sheet = "Benchmark",
-  range = "A1:J13"
+  range = "A1:R13"
 )
 
 club_order <- c("Driver", "3 Wood", "5 Wood", "7 Wood",
@@ -482,6 +590,8 @@ garminData <- as.data.frame(training) %>%
   arrange(factor(`Club Type`, levels = club_order))
 
 garminData["Roll Distance [m]"] <- garminData$`Total Distance [m]` - garminData$`Carry Distance [m]`
+garminData["Swing Tempo"] <- garminData$`Backswing Time [sec]` / garminData$`Downswing Time [sec]`
+
 
 irons = c("5 Iron", "6 Iron", "7 Iron", "8 Iron", "9 Iron")
 ironData <- garminData %>%
@@ -525,96 +635,39 @@ make_boxplot(
 
 # 2a. Mean values versus Benchmark
 
-meansPivot <- garminData %>%
-  group_by(`Club Type`) %>%
-  summarise(
-    `Club Speed [km/h]`  = mean(`Club Speed [km/h]`,  na.rm = TRUE),
-    `Attack Angle [deg]` = mean(`Attack Angle [deg]`, na.rm = TRUE),
-    `Ball Speed [km/h]`  = mean(`Ball Speed [km/h]`,  na.rm = TRUE),
-    `Smash Factor`       = mean(`Smash Factor`,        na.rm = TRUE),
-    `Launch Angle [deg]` = mean(`Launch Angle [deg]`, na.rm = TRUE),
-    `Backspin [rpm]`     = mean(`Backspin [rpm]`,     na.rm = TRUE),
-    `Apex Height [m]`    = mean(`Apex Height [m]`,    na.rm = TRUE),
-    `Carry Distance [m]` = mean(`Carry Distance [m]`, na.rm = TRUE)
-  )
-
-# ── 2a. Join my means with benchmark ─────────────────────────────────────────
-
-my_long <- meansPivot %>%
-  pivot_longer(-`Club Type`, names_to = "Metric", values_to = "You")
-
-bm_long <- benchmarkData %>%
-  pivot_longer(-`Club Type`, names_to = "Metric", values_to = "Benchmark")
-
-comparison <- my_long %>%
-  inner_join(bm_long, by = c("Club Type", "Metric")) %>%
-  mutate(
-    Delta      = You - Benchmark,
-    PctDiff    = (You - Benchmark) / Benchmark * 100,
-    `Club Type` = factor(`Club Type`, levels = club_order)
-  ) %>%
-  arrange(`Club Type`, Metric)
-
-# ── 2b. Formatted comparison table ───────────────────────────────────────────
-
-comparison_table <- comparison %>%
-  mutate(
-    You       = round(You, 1),
-    Benchmark = round(Benchmark, 1),
-    Delta     = round(Delta, 1),
-    PctDiff   = paste0(round(PctDiff, 1), "%")
-  ) %>%
-  rename(`% Diff` = PctDiff, `Δ` = Delta)
-
-print(comparison_table, n = Inf)
-
-# ── 2c. Heatmap: % vs benchmark per club × metric ─────────────────────────────
+meansPivot    <- compute_means_table(garminData,   "Club Type")
+benchmarkMeans <- compute_means_table(benchmarkData, "Club Type")
 
 metric_labels <- c(
-  "Club Speed [km/h]"  = "Club Speed",
-  "Ball Speed [km/h]"  = "Ball Speed",
-  "Carry Distance [m]" = "Carry Dist",
-  "Launch Angle [deg]" = "Launch Angle",
-  "Attack Angle [deg]" = "Attack Angle",
-  "Smash Factor"       = "Smash Factor",
-  "Backspin [rpm]"     = "Backspin",
-  "Apex Height [m]"    = "Apex Height"
+  "Club Speed [km/h]"              = "Club Speed",
+  "Attack Angle [deg]"             = "Attack Angle",
+  "Ball Speed [km/h]"              = "Ball Speed",
+  "Smash Factor"                   = "Smash Factor",
+  "Launch Angle [deg]"             = "Launch Angle",
+  "Spin Rate [rpm]"                = "Spin Rate",
+  "Apex Height [m]"                = "Apex Height",
+  "Carry Distance [m]"             = "Carry Dist",
+  "Swing Tempo"                    = "Swing Tempo",
+  "Spin Axis [deg]"                = "Spin Axis",
+  "Club Path [deg]"                = "Club Path",
+  "Club Face [deg]"                = "Club Face",
+  "Face to Path [deg]"             = "Face to Path",
+  "Launch Direction [deg]"         = "Launch Dir",
+  "Sidespin [rpm]"                 = "Sidespin",
+  "Carry Deviation Angle [deg]"    = "Carry Dev Angle",
+  "Carry Deviation Distance [m]"   = "Carry Dev Dist"
 )
 
-heatmap_data <- comparison %>%
-  mutate(
-    MetricShort = metric_labels[Metric],
-    MetricShort = ifelse(is.na(MetricShort), Metric, MetricShort),
-    label       = sprintf("%+.1f%%", PctDiff)
-  )
+# 2b. Heatmap
 
-p_heatmap <- ggplot(
-  heatmap_data,
-  aes(x = MetricShort, y = fct_rev(`Club Type`), fill = PctDiff)
-) +
-  geom_tile(color = "white", linewidth = 0.6) +
-  geom_text(aes(label = label), size = 3.2, fontface = "bold") +
-  scale_fill_gradient2(
-    low      = "#d73027",
-    mid      = "white",
-    high     = "#1a9850",
-    midpoint = 0,
-    limits   = c(-30, 30),
-    oob      = scales::squish,
-    name     = "% vs\nBenchmark"
-  ) +
-  labs(
-    title    = "My performance vs benchmark",
-    subtitle = "Cell label = absolute delta  ·  Colour = % above (green) / below (red) benchmark",
-    x        = NULL,
-    y        = NULL
-  ) +
-  theme_minimal(base_size = 13) +
-  theme(
-    axis.text.x     = element_text(angle = 30, hjust = 1),
-    panel.grid      = element_blank(),
-    legend.position = "right"
-  )
+p_heatmap <- plot_benchmark_heatmap(
+  data_means      = meansPivot,
+  benchmark_means = benchmarkMeans,
+  grouper         = "Club Type",
+  metric_labels   = metric_labels,
+  title           = "My performance vs benchmark",
+  mode            = "hybrid"
+)
 
 p_heatmap
 
