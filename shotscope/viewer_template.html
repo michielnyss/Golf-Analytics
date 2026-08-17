@@ -1,0 +1,2205 @@
+<title>Yardage Book</title>
+<style>
+  /* ── Tokens ──────────────────────────────────────────────────────────────
+     Light is the bare :root default; dark is redefined at token level only,
+     once for the un-stamped system state and once for an explicit toggle.  */
+  :root {
+    --ground:   #E7ECE6;
+    --panel:    #F6F8F4;
+    --sunk:     #DDE4DB;
+    --line:     #C6D0C3;
+    --line-soft:#D8E0D5;
+    --text:     #16211C;
+    --muted:    #5D6E64;
+    --faint:    #8CA093;
+    --shadow:   0 1px 2px rgba(16,32,24,.10), 0 8px 24px rgba(16,32,24,.06);
+    --tee:      #C77B12;
+    --grn:      #1D7F97;
+    --hot:      #C0392B;
+
+    /* The hole page: `matte` is the card the hole sits on, `veil` washes out
+       everything the course mapping does not call part of the hole.          */
+    --matte:    #FFFFFF;
+    --veil:     #FFFFFF;
+    --frame:    #C6D0C3;
+
+    --turf-rough:   #3B5E32;
+    --turf-fairway: #6FA04A;
+    --turf-green:   #9BCB5A;
+    --turf-tee:     #5E8C46;
+    --turf-bunker:  #E4CE9B;
+    --turf-water:   #3A7CA5;
+
+    --font-ui: "Segoe UI", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", "Roboto Mono", Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0C1512;
+      --panel:    #131F1B;
+      --sunk:     #0A120F;
+      --line:     #24352F;
+      --line-soft:#1B2823;
+      --text:     #DCE7E1;
+      --muted:    #7E948B;
+      --faint:    #55685E;
+      --shadow:   0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.35);
+      --tee:      #F2A93B;
+      --grn:      #5AD1E8;
+      --hot:      #FF6B5A;
+      --matte:    #08100D;
+      --veil:     #060C0A;
+      --frame:    #2C4038;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0C1512;
+    --panel:    #131F1B;
+    --sunk:     #0A120F;
+    --line:     #24352F;
+    --line-soft:#1B2823;
+    --text:     #DCE7E1;
+    --muted:    #7E948B;
+    --faint:    #55685E;
+    --shadow:   0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.35);
+    --tee:      #F2A93B;
+    --grn:      #5AD1E8;
+    --hot:      #FF6B5A;
+    --matte:    #08100D;
+    --veil:     #060C0A;
+    --frame:    #2C4038;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--tee); outline-offset: 2px; border-radius: 3px; }
+
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .lbl {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* ── Shell ─────────────────────────────────────────────────────────────── */
+  .app {
+    display: grid;
+    grid-template-columns: 92px minmax(0,1fr) 300px;
+    grid-template-rows: 52px minmax(0,1fr);
+    height: 100dvh;
+  }
+
+  header {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    min-width: 0;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .brand h1 {
+    margin: 0; font-size: 15px; font-weight: 700;
+    letter-spacing: -.01em; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .brand .sub { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .spacer { flex: 1; }
+
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    padding: 5px 11px; font-size: 11px; font-family: var(--font-mono);
+    letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--panel); }
+  .seg button:hover:not([aria-pressed="true"]) { background: var(--sunk); color: var(--text); }
+
+  /* Tee-set picker: the colour is the label, the name is only its caption. */
+  .seg#teeSeg[hidden] { display: none; }
+  .seg#teeSeg button { display: flex; align-items: center; gap: 6px; }
+  .seg#teeSeg i {
+    width: 9px; height: 9px; border-radius: 2px; flex: none;
+    border: 1px solid rgba(0,0,0,.45); box-shadow: 0 0 0 1px rgba(255,255,255,.25);
+  }
+
+  /* ── Hole rail ─────────────────────────────────────────────────────────── */
+  .rail {
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 8px 8px 20px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .rail .lbl { padding: 6px 2px 4px; }
+  .chip {
+    display: grid; grid-template-columns: 1fr auto; align-items: center;
+    gap: 2px 6px; width: 100%;
+    padding: 6px 7px;
+    border: 1px solid transparent; border-radius: 5px;
+    background: var(--sunk);
+    text-align: left;
+    transition: background .12s, border-color .12s;
+  }
+  .chip:hover { border-color: var(--line); }
+  .chip[aria-current="true"] { background: var(--text); color: var(--panel); }
+  .chip[aria-current="true"] .chip-par { color: var(--panel); opacity: .65; }
+  .chip-n { font-family: var(--font-mono); font-size: 15px; font-weight: 700; line-height: 1; }
+  .chip-par { font-family: var(--font-mono); font-size: 9px; color: var(--faint); letter-spacing: .06em; }
+  .chip-sc {
+    grid-column: 2; grid-row: 1 / span 2;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    padding: 1px 4px; border-radius: 3px; line-height: 1.4;
+  }
+  .sc-under { background: #2E7D32; color: #fff; }
+  .sc-par   { background: var(--line); color: var(--text); }
+  .sc-b1    { background: #E8A33D; color: #21160a; }
+  .sc-b2    { background: #C0392B; color: #fff; }
+
+  .rail .allbtn {
+    padding: 7px; border: 1px solid var(--line); border-radius: 5px;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+  }
+  .rail .allbtn[aria-current="true"] { background: var(--text); color: var(--panel); border-color: var(--text); }
+
+  /* ── Stage ─────────────────────────────────────────────────────────────── */
+  .stage { position: relative; background: var(--sunk); min-width: 0; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  canvas.grabbing { cursor: grabbing; }
+
+  /* ── Zoom control ──────────────────────────────────────────────────────── */
+  .zoom {
+    position: absolute; right: 12px; top: 12px;
+    display: flex; flex-direction: column;
+    background: var(--panel); border-radius: 6px; box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .zoom button {
+    width: 30px; height: 28px; display: grid; place-items: center;
+    font-family: var(--font-mono); font-size: 14px; line-height: 1; color: var(--muted);
+  }
+  .zoom button + button { border-top: 1px solid var(--line-soft); }
+  .zoom button:hover { background: var(--sunk); color: var(--text); }
+  .zoom .lvl {
+    font-family: var(--font-mono); font-size: 9px; color: var(--faint);
+    text-align: center; padding: 3px 0; border-top: 1px solid var(--line-soft);
+    letter-spacing: .04em;
+  }
+
+  .hud {
+    position: absolute; left: 12px; bottom: 12px;
+    display: flex; gap: 1px; pointer-events: none;
+    border-radius: 6px; overflow: hidden; box-shadow: var(--shadow);
+  }
+  /* A class-level `display` beats the UA rule for [hidden] — restore it. */
+  .hud[hidden], .tog[hidden] { display: none; }
+  .hud .cell { background: var(--panel); padding: 6px 11px; min-width: 78px; }
+  .hud .cell .lbl { display: block; margin-bottom: 1px; }
+  .hud .cell .v { font-family: var(--font-mono); font-size: 16px; font-weight: 600; line-height: 1.1; }
+  .hud .cell.tee .v { color: var(--tee); }
+  .hud .cell.grn .v { color: var(--grn); }
+
+  .legend {
+    position: absolute; right: 12px; bottom: 12px;
+    background: var(--panel); border-radius: 6px; box-shadow: var(--shadow);
+    padding: 8px 11px; display: flex; flex-wrap: wrap; gap: 4px 12px;
+    max-width: 260px; pointer-events: none;
+  }
+  .legend span { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
+  .legend i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+  .toggles {
+    position: absolute; left: 12px; top: 12px;
+    display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  }
+  .tog {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--panel); border-radius: 5px; box-shadow: var(--shadow);
+    padding: 5px 10px 5px 8px;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .tog i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+  .tog[aria-pressed="true"] { color: var(--text); }
+  .tog[aria-pressed="true"] i { background: currentColor; }
+  .tog.t-tee[aria-pressed="true"] i { background: var(--tee); }
+  .tog.t-grn[aria-pressed="true"] i { background: var(--grn); }
+
+  .satrow { display: flex; align-items: center; gap: 8px; }
+  .satrow input[type=range] { width: 78px; accent-color: var(--tee); cursor: pointer; }
+
+  /* ── Readout panel ─────────────────────────────────────────────────────── */
+  .panel {
+    background: var(--panel); border-left: 1px solid var(--line);
+    overflow-y: auto; padding: 14px 14px 28px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  /* The panel scrolls, so nothing in it may shrink to make the column fit:
+     without this a full scorecard squeezes the stat grid down to its borders. */
+  .panel > * { flex: none; }
+  .bigno { display: flex; align-items: baseline; gap: 10px; }
+  .bigno b { font-family: var(--font-mono); font-size: 42px; font-weight: 700; line-height: .9; letter-spacing: -.03em; }
+  .bigno .meta { display: flex; flex-direction: column; gap: 1px; }
+  .bigno .meta .par { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+  .bigno .meta .len { font-family: var(--font-mono); font-size: 19px; font-weight: 600; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 6px; overflow: hidden; }
+  .grid2 .kv { background: var(--panel); padding: 7px 9px; }
+  .grid2 .kv .v { font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
+
+  section h2 {
+    margin: 0 0 7px; font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: .13em; text-transform: uppercase; color: var(--faint); font-weight: 500;
+  }
+  table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11px; }
+  th { text-align: left; font-weight: 500; color: var(--faint); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; padding: 0 0 4px; }
+  td { padding: 3px 0; border-top: 1px solid var(--line-soft); vertical-align: baseline; }
+  th + th, td + td { padding-left: 10px; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  /* OUT / IN / TOTAL: the card's own subtotals, ruled off like a card rules them. */
+  tr.sub td { border-top: 1px solid var(--line); color: var(--muted); font-weight: 700; }
+  .scroll { overflow-x: auto; }
+
+  .tees { display: flex; flex-direction: column; gap: 3px; }
+  .teebtn {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  }
+  .teebtn[aria-pressed="true"] { border-color: var(--tee); color: var(--text); }
+  .teebtn[aria-pressed="true"] b { color: var(--tee); }
+  .teebtn span { display: flex; align-items: center; gap: 6px; }
+  .teebtn .swatch {
+    width: 9px; height: 9px; border-radius: 2px; flex: none;
+    border: 1px solid rgba(0,0,0,.45); box-shadow: 0 0 0 1px rgba(255,255,255,.25);
+  }
+  .teebtn em {
+    font-style: normal; font-size: 8px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--faint); border: 1px solid var(--line); border-radius: 3px; padding: 0 3px;
+  }
+  /* The card length leads; the straight line to the green trails it, quieter. */
+  .teebtn .alt { font-style: normal; font-weight: 400; color: var(--faint); margin-left: 6px; }
+
+  .note { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .note code { font-family: var(--font-mono); font-size: 10px; background: var(--sunk); padding: 1px 4px; border-radius: 3px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  @media (max-width: 1000px) {
+    .app { grid-template-columns: 78px minmax(0,1fr); grid-template-rows: 52px minmax(0,55vh) auto; }
+    .panel { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); }
+    .rail .allbtn { padding: 7px 2px; letter-spacing: .04em; font-size: 9px; }
+  }
+
+  /* ══ Charts ═════════════════════════════════════════════════════════════════
+     A palette of its own. The map's amber and cyan already mean "from the tee"
+     and "to the green", so spending them on a chart series would say something
+     the chart does not mean. So: one blue where the job is magnitude, and a
+     blue↔red diverging scale where it is polarity against par — with grey at
+     par, because par is the "nothing" the scale pivots on.
+
+     Both modes are stepped for the surface the charts actually sit on (--panel)
+     and validated against it, rather than one set flipped. Outward from par is
+     darker on light, lighter on dark; each arm is one hue.                    */
+  :root {
+    --viz:       #2A78D6;   /* single-hue marks: bars, lines, ranges */
+    --viz-soft:  #9EC5F4;   /* the same hue, receded: spreads, context */
+    --sc-eagle:  #104281;  --sc-eagle-ink:  #FFFFFF;
+    --sc-birdie: #2A78D6;  --sc-birdie-ink: #FFFFFF;
+    --sc-par:    #9FA89C;  --sc-par-ink:    #14201A;
+    --sc-bogey:  #EC8571;  --sc-bogey-ink:  #2A0C06;
+    --sc-double: #CB3527;  --sc-double-ink: #FFFFFF;
+    --sc-triple: #7E1C14;  --sc-triple-ink: #FFFFFF;
+    /* Sequential, for counts in a grid. Step 0 is allowed to recede — on a
+       sequential scale the lightest step means "near nothing". */
+    --heat-0: #ECF3FD; --heat-0-ink: #5D6E64;
+    --heat-1: #DCEAFC; --heat-1-ink: #16211C;
+    --heat-2: #9EC5F4; --heat-2-ink: #0B2340;
+    --heat-3: #5598E7; --heat-3-ink: #06182E;
+    --heat-4: #2A78D6; --heat-4-ink: #FFFFFF;
+    --heat-5: #184F95; --heat-5-ink: #FFFFFF;
+    --good: #006300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --viz:       #3987E5;
+      --viz-soft:  #1C5CAB;
+      --sc-eagle:  #B7D3F6;  --sc-eagle-ink:  #071426;
+      --sc-birdie: #3987E5;  --sc-birdie-ink: #FFFFFF;
+      --sc-par:    #4E625A;  --sc-par-ink:    #E6EFE9;
+      --sc-bogey:  #C9382B;  --sc-bogey-ink:  #FFFFFF;
+      --sc-double: #E5806B;  --sc-double-ink: #2A0C06;
+      --sc-triple: #F3AE9B;  --sc-triple-ink: #2A0C06;
+      --heat-0: #101C24; --heat-0-ink: #7E948B;
+      --heat-1: #17304C; --heat-1-ink: #C7DAF3;
+      --heat-2: #1C5CAB; --heat-2-ink: #FFFFFF;
+      --heat-3: #2A78D6; --heat-3-ink: #FFFFFF;
+      --heat-4: #5598E7; --heat-4-ink: #08131F;
+      --heat-5: #9EC5F4; --heat-5-ink: #08131F;
+      --good: #0CA30C;
+    }
+  }
+  :root[data-theme="dark"] {
+    --viz:       #3987E5;
+    --viz-soft:  #1C5CAB;
+    --sc-eagle:  #B7D3F6;  --sc-eagle-ink:  #071426;
+    --sc-birdie: #3987E5;  --sc-birdie-ink: #FFFFFF;
+    --sc-par:    #4E625A;  --sc-par-ink:    #E6EFE9;
+    --sc-bogey:  #C9382B;  --sc-bogey-ink:  #FFFFFF;
+    --sc-double: #E5806B;  --sc-double-ink: #2A0C06;
+    --sc-triple: #F3AE9B;  --sc-triple-ink: #2A0C06;
+    --heat-0: #101C24; --heat-0-ink: #7E948B;
+    --heat-1: #17304C; --heat-1-ink: #C7DAF3;
+    --heat-2: #1C5CAB; --heat-2-ink: #FFFFFF;
+    --heat-3: #2A78D6; --heat-3-ink: #FFFFFF;
+    --heat-4: #5598E7; --heat-4-ink: #08131F;
+    --heat-5: #9EC5F4; --heat-5-ink: #08131F;
+    --good: #0CA30C;
+  }
+
+  /* ── Course switcher ───────────────────────────────────────────────────────
+     The brand is the switcher: the course you are in is a button back to the
+     library, which is also the search. One control, both jobs. */
+  button.brand {
+    display: flex; align-items: baseline; gap: 9px; min-width: 0;
+    padding: 4px 9px 4px 8px; margin-left: -8px; border-radius: 6px;
+    text-align: left;
+  }
+  button.brand:hover { background: var(--sunk); }
+  button.brand .caret { font-size: 9px; color: var(--faint); flex: none; }
+
+  /* ── Library ───────────────────────────────────────────────────────────────
+     Every course on disk, searchable. Also the app's front door: with nothing
+     loaded it is all there is, and it stays one keystroke away afterwards. */
+  .lib {
+    position: fixed; inset: 0; z-index: 70;
+    background: var(--ground);
+    display: flex; flex-direction: column;
+  }
+  .lib[hidden] { display: none; }
+  .lib-top {
+    flex: none; padding: 26px 26px 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .lib-top .row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+  .lib-top h1 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+  .lib-top .row .lbl { margin-left: auto; }
+  .find {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--sunk); border: 1px solid var(--line);
+    border-radius: 8px; padding: 0 12px;
+    max-width: 560px;
+  }
+  .find:focus-within { border-color: var(--viz); }
+  .find svg { flex: none; color: var(--faint); }
+  .find input {
+    flex: 1 1 auto; min-width: 0;
+    font: inherit; font-size: 15px; color: inherit;
+    background: none; border: none; padding: 11px 0; outline: none;
+  }
+  .find input::placeholder { color: var(--faint); }
+  .find kbd {
+    flex: none; font-family: var(--font-mono); font-size: 10px; color: var(--faint);
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  }
+  .lib-body { flex: 1 1 auto; overflow-y: auto; padding: 20px 26px 40px; }
+  .cards {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    max-width: 1180px;
+  }
+  .cc {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 9px; padding: 14px 15px 12px;
+    display: flex; flex-direction: column; gap: 11px;
+    text-align: left; width: 100%;
+    transition: border-color .12s, transform .12s;
+  }
+  .cc:hover, .cc.on { border-color: var(--viz); }
+  .cc:hover { transform: translateY(-1px); }
+  .cc h3 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+  .cc .where { font-size: 11px; color: var(--muted); }
+  .cc .nums { display: flex; gap: 16px; }
+  .cc .nums div { display: flex; flex-direction: column; gap: 1px; }
+  .cc .nums .v { font-family: var(--font-mono); font-size: 17px; font-weight: 650; line-height: 1; }
+  .cc .foot {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    padding-top: 10px; border-top: 1px solid var(--line-soft);
+  }
+  .cc .tag {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px;
+  }
+  .cc .tag i {
+    display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+    margin-right: 4px; vertical-align: -1px;
+    border: 1px solid rgba(0,0,0,.45); box-shadow: 0 0 0 1px rgba(255,255,255,.25);
+  }
+  .cc .spark { margin-left: auto; }
+  .lib .none { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+  .lib .hint { margin: 22px 0 0; max-width: 620px; }
+
+  /* ── Analysis ─────────────────────────────────────────────────────────────── */
+  .stage.on-stats > :not(.stats) { display: none; }
+  .stats {
+    position: absolute; inset: 0; overflow-y: auto;
+    background: var(--ground); padding: 16px 18px 40px;
+    display: none; flex-direction: column; gap: 14px;
+  }
+  .stage.on-stats > .stats { display: flex; }
+
+  .kpis { display: grid; gap: 1px; background: var(--line-soft);
+          grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+          border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden; }
+  .kpi { background: var(--panel); padding: 10px 12px 11px; }
+  .kpi .v { font-size: 25px; font-weight: 650; line-height: 1.05; letter-spacing: -.02em; }
+  .kpi .v small { font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .kpi .sub { font-size: 10px; color: var(--faint); margin-top: 1px; }
+  .kpi.hero { grid-column: span 2; }
+  .kpi.hero .v { font-size: 40px; }
+
+  .card2 {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 9px; padding: 13px 15px 14px;
+  }
+  .card2 > header {
+    all: unset; display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .card2 > header h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .01em;
+                       text-transform: none; color: var(--text); font-family: var(--font-ui); }
+  .card2 > header .sub { font-size: 10.5px; color: var(--muted); }
+  .card2 > header .grow { flex: 1 1 auto; }
+  .tbtn {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px;
+  }
+  .tbtn[aria-pressed="true"] { background: var(--text); color: var(--panel); border-color: var(--text); }
+  .card2 .plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .card2 .tv { display: none; }
+  .card2.as-table .plot { display: none; }
+  .card2.as-table .tv { display: block; }
+  .card2 .tv { max-height: 340px; overflow: auto; }
+  .card2 .foot { margin-top: 9px; font-size: 10.5px; color: var(--muted); }
+
+  .keys { display: flex; flex-wrap: wrap; gap: 3px 13px; }
+  .keys span { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
+  .keys i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+  /* Chart ink. Marks are thin, the grid is a hairline one shade off the panel. */
+  .plot .gl { stroke: var(--line-soft); stroke-width: 1; }
+  .plot .ax { stroke: var(--line); stroke-width: 1; }
+  .plot text { font-family: var(--font-mono); fill: var(--muted); font-size: 9.5px;
+               font-variant-numeric: tabular-nums; }
+  .plot text.val { fill: var(--text); font-weight: 650; font-size: 10px; }
+  .plot text.ink { font-weight: 650; font-size: 9.5px; }
+  .plot .mark { fill: var(--viz); }
+  .plot .soft { fill: var(--viz-soft); }
+  .plot .ln { fill: none; stroke: var(--viz); stroke-width: 2; stroke-linejoin: round; }
+  .plot .dot { fill: var(--viz); stroke: var(--panel); stroke-width: 2; }
+  .plot .hit { fill: transparent; }
+  .plot .hit:hover ~ .dot, .plot [data-tip]:hover { filter: brightness(1.12); }
+
+  /* The grids — score matrix and lie matrix — are the table and the chart at
+     once: a cell carries its number, and colour only ranks it. */
+  table.grid { border-collapse: separate; border-spacing: 2px; width: auto; }
+  table.grid th { padding: 2px 4px; font-size: 8.5px; white-space: nowrap; }
+  table.grid th.rh { text-align: right; padding-right: 6px; color: var(--muted); }
+  table.grid td {
+    border: none; padding: 0; text-align: center; min-width: 22px; height: 20px;
+    border-radius: 3px; font-size: 10px; font-weight: 650;
+    background: var(--sunk); color: var(--faint);
+  }
+  .gwrap { overflow-x: auto; }
+
+  @media (max-width: 1000px) {
+    .kpi.hero { grid-column: span 2; }
+    .lib-top, .lib-body { padding-left: 16px; padding-right: 16px; }
+  }
+
+  /* One tooltip, shared: anything with data-tip gets it. */
+  .tip {
+    position: fixed; z-index: 90; pointer-events: none; opacity: 0;
+    transform: translate(-50%, -100%);
+    background: var(--text); color: var(--panel);
+    font-size: 11px; line-height: 1.35; padding: 5px 8px; border-radius: 5px;
+    max-width: 260px; box-shadow: var(--shadow);
+    transition: opacity .1s;
+  }
+  .tip.on { opacity: 1; }
+  .tip b { font-family: var(--font-mono); }
+
+  /* ══ Yardage book ═══════════════════════════════════════════════════════════
+     The book is laid out in millimetres, so what you see in the preview is the
+     paper. Screen only adds the grey desk it sits on; @media print takes that
+     away and lets the sheets fall onto the pages.                            */
+
+  .book-wrap {
+    position: fixed; inset: 0; z-index: 60;
+    background: var(--sunk); display: flex; flex-direction: column;
+  }
+  .book-wrap[hidden] { display: none; }
+
+  .book-bar {
+    flex: none; display: flex; align-items: center; gap: 14px;
+    padding: 9px 14px; background: var(--panel);
+    border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+    flex-wrap: wrap;
+  }
+  .book-bar h2 {
+    margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--text);
+  }
+  .book-bar .fld { display: flex; align-items: center; gap: 6px; }
+  .book-bar .fld > .lbl { font-size: 10px; }
+  .book-bar select, .book-bar input[type=number] {
+    font: inherit; font-size: 12px; color: var(--text);
+    background: var(--sunk); border: 1px solid var(--line);
+    border-radius: 5px; padding: 3px 6px;
+  }
+  .book-bar input[type=number] { width: 52px; }
+  .book-bar .chk { display: flex; align-items: center; gap: 5px; font-size: 10px; }
+  .book-bar .chk input { accent-color: var(--tee); }
+  .book-bar .grow { flex: 1 1 auto; }
+  .book-bar .go, .book-bar .cls {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; padding: 6px 12px; border-radius: 5px;
+    border: 1px solid var(--line); color: var(--text); background: var(--sunk);
+  }
+  .book-bar .go { background: var(--tee); border-color: var(--tee); color: #0B1410; font-weight: 700; }
+  .book-bar .go:hover { filter: brightness(1.08); }
+  .book-bar .go[disabled] { opacity: .45; cursor: default; filter: none; }
+  .book-bar .cls:hover { background: var(--line-soft); }
+  .book-bar .note { font-size: 10px; color: var(--faint); }
+
+  .book-scroll { flex: 1 1 auto; overflow: auto; padding: 20px; display: grid; place-items: start center; }
+  .book { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+  /* Every box below is sized in millimetres, never in percentages or flex
+     leftovers: the printed page and the preview then agree exactly, and a
+     rounding error cannot push a card onto a second sheet. JS writes the
+     custom properties from the chosen page size — see bookSkeleton(). */
+
+  .paper {                                  /* the sheet of paper itself */
+    width: var(--pw); height: var(--ph); padding: var(--pm);
+    background: #fff; color: #12100D;
+    box-shadow: 0 2px 14px rgba(0,0,0,.28);
+  }
+  .sheet {                                  /* its printable content box */
+    width: var(--cw); height: var(--ch);
+    display: flex; gap: var(--pm); align-items: center; justify-content: space-evenly;
+  }
+
+  /* A hole card: the map, and the ribbon that names it. The card is exactly as
+     wide as the map, so the ribbon lines up with it instead of running out into
+     the margin — the leftover width becomes a thumb margin. */
+  .card { flex: none; width: var(--card-w); display: flex; flex-direction: column; gap: var(--gap); }
+  .card.rib-top { flex-direction: column-reverse; }
+  .card > img {
+    flex: none; display: block;
+    width: 100%; height: var(--map-h); object-fit: contain;
+  }
+
+  .ribbon {
+    flex: none; display: flex; align-items: stretch;
+    border: .3mm solid #12100D; border-radius: .8mm; overflow: hidden;
+    font-family: var(--font-mono); line-height: 1;
+  }
+  .ribbon .no {
+    background: #12100D; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 2.4mm; font-weight: 700; font-size: var(--rib-no);
+  }
+  .ribbon .cells { flex: 1 1 auto; display: flex; align-items: center; }
+  .ribbon .c {
+    flex: 1 1 0; padding: 1.3mm 1.8mm; min-width: 0;
+    display: flex; flex-direction: column; gap: .5mm;
+  }
+  .ribbon .c + .c { border-left: .2mm solid #C9C4BA; }
+  .ribbon .c .k {
+    font-size: var(--rib-k); letter-spacing: .1em; text-transform: uppercase;
+    color: #6E685E; white-space: nowrap;
+  }
+  .ribbon .c .v { font-size: var(--rib-v); font-weight: 700; white-space: nowrap; }
+
+  /* Cut guide, so a 2-up sheet can be trimmed into two cards. */
+  .sheet.twoup { position: relative; }
+  .sheet.twoup::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 50%;
+    border-left: .2mm dashed #B9B3A8;
+  }
+
+  @media print {
+    /* Chrome takes the paper from the @page rule JS rewrites — see setPageCSS().
+       Its margin then owns the paper edge, so .paper drops its own padding and
+       the sheet inside it is already exactly the printable box. */
+    html, body { height: auto; overflow: visible; background: #fff; }
+    .app { display: none !important; }
+    .book-wrap { position: static; inset: auto; display: block; background: #fff; }
+    .book-wrap[hidden] { display: block; }
+    .book-bar { display: none !important; }
+    .book-scroll { overflow: visible; padding: 0; display: block; }
+    .book { display: block; gap: 0; }
+    .paper {
+      box-shadow: none; padding: 0;
+      width: var(--cw); height: var(--ch);
+      break-after: page; page-break-after: always;
+      break-inside: avoid; page-break-inside: avoid;
+    }
+    .paper:last-child { break-after: auto; page-break-after: auto; }
+  }
+</style>
+<style id="pageCSS">@page { size: A6 portrait; margin: 5mm; }</style>
+
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1 id="courseName">—</h1>
+      <span class="sub" id="courseSub"></span>
+    </div>
+    <div class="spacer"></div>
+    <div class="seg" id="teeSeg" role="group" aria-label="Tees" hidden></div>
+    <div class="seg" role="group" aria-label="Units">
+      <button id="uM"  aria-pressed="true">Metres</button>
+      <button id="uY"  aria-pressed="false">Yards</button>
+    </div>
+    <div class="seg" role="group" aria-label="Yardage book">
+      <button id="bookBtn" title="Create a printable yardage book (b)">Create yardage book</button>
+    </div>
+    <div class="seg" role="group" aria-label="Theme">
+      <button id="thL" aria-pressed="false" title="Light">Light</button>
+      <button id="thD" aria-pressed="false" title="Dark">Dark</button>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Holes">
+    <button class="allbtn" id="allBtn">Course</button>
+    <div class="lbl">Holes</div>
+    <div id="chips" style="display:flex;flex-direction:column;gap:4px"></div>
+  </nav>
+
+  <div class="stage">
+    <canvas id="cv"></canvas>
+
+    <div class="toggles">
+      <button class="tog t-tee" id="tgTee"  aria-pressed="true"><i></i>Tee rings</button>
+      <button class="tog t-grn" id="tgGrn"  aria-pressed="true"><i></i>Green rings</button>
+      <button class="tog"       id="tgShot" aria-pressed="true"><i></i>My shots</button>
+      <button class="tog"       id="tgPin"  aria-pressed="true"><i></i>Pins</button>
+      <button class="tog"       id="tgFocus" aria-pressed="true"><i></i>Focus</button>
+      <div class="tog satrow" id="satRow" hidden>
+        <button id="tgSat" aria-pressed="false" style="display:flex;align-items:center;gap:7px;text-transform:uppercase;letter-spacing:.08em;font-size:10px;color:inherit"><i></i>Satellite</button>
+        <input type="range" id="satOp" min="0" max="100" value="70" aria-label="Satellite opacity">
+      </div>
+    </div>
+
+    <div class="zoom" role="group" aria-label="Zoom">
+      <button id="zIn"  title="Zoom in (+)"      aria-label="Zoom in">+</button>
+      <button id="zOut" title="Zoom out (−)"     aria-label="Zoom out">−</button>
+      <button id="zRst" title="Reset view (0)"   aria-label="Reset view">⤢</button>
+      <div class="lvl" id="zLvl">1.0×</div>
+    </div>
+
+    <div class="hud" id="hud" hidden>
+      <div class="cell tee"><span class="lbl">From tee</span><span class="v" id="hudTee">—</span></div>
+      <div class="cell grn"><span class="lbl">To green</span><span class="v" id="hudGrn">—</span></div>
+      <div class="cell"><span class="lbl">Front / Back</span><span class="v" id="hudFB" style="font-size:13px">—</span></div>
+    </div>
+
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <aside class="panel" id="panel"></aside>
+</div>
+
+<!-- ── Yardage book ─────────────────────────────────────────────────────────
+     Preview is the paper: tweak the bar, hit Print, save as PDF.          -->
+<div class="book-wrap" id="bookWrap" hidden>
+  <div class="book-bar">
+    <h2>Yardage book</h2>
+    <div class="fld">
+      <span class="lbl">Page</span>
+      <select id="bkSize">
+        <option value="A6">A6 · 105×148</option>
+        <option value="A5">A5 · 148×210</option>
+        <option value="A4">A4 · 210×297</option>
+        <option value="Letter">Letter · 8.5×11"</option>
+        <option value="Pocket">Pocket · 4×6"</option>
+      </select>
+    </div>
+    <div class="fld">
+      <span class="lbl">Per sheet</span>
+      <select id="bkPer"><option value="1">1 hole</option><option value="2">2 holes</option></select>
+    </div>
+    <div class="fld">
+      <span class="lbl">Margin</span>
+      <input type="number" id="bkMargin" min="0" max="25" step="1">
+      <span class="lbl">mm</span>
+    </div>
+    <label class="chk"><input type="checkbox" id="bkLight" checked> Print light</label>
+    <label class="chk"><input type="checkbox" id="bkGray"> Greyscale</label>
+    <label class="chk"><input type="checkbox" id="bkTop"> Ribbon on top</label>
+    <span class="grow"></span>
+    <span class="note" id="bkNote"></span>
+    <button class="go"  id="bkPrint">Print / Save PDF</button>
+    <button class="cls" id="bkClose">Close</button>
+  </div>
+  <div class="book-scroll"><div class="book" id="book"></div></div>
+</div>
+
+<script>
+const COURSE = /*__COURSE_DATA__*/null;
+
+/* ── Palette (turf is map content — identical in both themes) ─────────────── */
+const LIE = {
+  r: [ 59,  94,  50],   // rough
+  f: [111, 160,  74],   // fairway
+  g: [155, 203,  90],   // green
+  t: [ 94, 140,  70],   // tee
+  b: [228, 206, 155],   // bunker
+  w: [ 58, 124, 165],   // water
+  p: [140, 140, 130],
+  x: [ 40,  70,  40],
+};
+const LIE_NAME = { t:'Tee', f:'Fairway', g:'Green', b:'Bunker', w:'Water', r:'Rough' };
+const M_LAT = 110540, M_LNG = 111320;
+const YD = 1.0936133;
+
+/* Tee markers are painted in their real colour where the name gives one away. */
+const TEE_COLOR = {
+  white: '#F2F2EE', yellow: '#EFC53F', red: '#CE3B2C', blue: '#3E86C6',
+  black: '#23272B', gold: '#D4A02A', green: '#3E9B54', silver: '#B9C2BD',
+  orange: '#E0762B', bronze: '#B07A46', purple: '#8B5FBF', pink: '#E081A8',
+};
+const teeColor = name => TEE_COLOR[String(name || '').trim().toLowerCase().split(/\s+/)[0]] || null;
+
+/* The club's card, when scorecard.py has folded one in: the tee sets it prints,
+   and the set you are playing off. `teeSet` is one choice for the whole book —
+   the overview card, every hole page and the printed ribbon all read it — so
+   picking your tees once sets the lengths everywhere. */
+const CARD = COURSE.card || null;
+const CARD_TEES = CARD ? CARD.tees.map(t => t.name) : [];
+const CARD_TEE = name => CARD ? CARD.tees.find(t => t.name === name) : null;
+const PLAYED_TEE = (COURSE.holes.find(h => (h.card_tees || []).some(t => t.played))
+  ?.card_tees.find(t => t.played) || {}).name || null;
+
+/* ── State ────────────────────────────────────────────────────────────────── */
+const S = {
+  view: 'course', hole: 0, units: 'm',
+  rings: { tee: true, green: true },
+  shots: true, pins: true, focus: true,
+  sat: false, satOp: .70,
+  teeSet: PLAYED_TEE || CARD_TEES[0] || null,
+  teeIdx: 0, measure: null, cursor: null,
+  zoom: 1, pan: { x: 0, y: 0 },
+};
+
+const TEE_RINGS   = [100, 150, 200, 250];
+const GREEN_RINGS = [25, 50, 75, 100, 125, 150, 175, 200];
+
+/* Every hole is drawn onto a page of this shape, so flipping between holes
+   compares like with like instead of reflowing to each hole's bounding box. */
+const PAGE_AR   = 0.62;   // width / height
+const PAGE_PAD  = 18;     // metres of air around the hole content
+const CORRIDOR_HALF = 85; // m either side of the tee->green line that counts as "this hole"
+const CORRIDOR_END  = 45; // m behind the tee / past the green that still counts
+const VEIL_A    = 0.86;   // how hard the surroundings are washed out
+
+/* Focus: what counts as the hole. Rough is play, so the lit area is the whole
+   corridor between tee, fairway and green — plus a buffer of rough around it. */
+const PLAY_SLICES   = 180; // bands across the play axis
+const PLAY_BUFFER   = 22;  // m of rough kept lit around the playing area
+const PLAY_MAX_HALF = 75;  // m either side of the centre line the light can reach
+const FEATHER_M     = 10;  // m of soft edge where the light falls off
+const ZOOM_MIN = 1, ZOOM_MAX = 24;
+
+/* Not const: the yardage book renders the very same drawing code onto its own
+   offscreen canvas by swapping these two out and back. See renderBook(). */
+let cv = document.getElementById('cv');
+let ctx = cv.getContext('2d');
+const SCREEN_CV = cv;
+
+/* Overrides the book sets while it renders — null means "we are on screen".
+   PRINT_DPR buys print resolution; PRINT_FIT fills the card edge to edge,
+   where on screen the page floats in its matte. */
+let PRINT_DPR = null, PRINT_FIT = null;
+const LAT0 = (COURSE.bounds.minLat + COURSE.bounds.maxLat) / 2;
+const LNG0 = (COURSE.bounds.minLng + COURSE.bounds.maxLng) / 2;
+const COSL = Math.cos(LAT0 * Math.PI / 180);
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const proj = (lat, lng) => ({ x: (lng - LNG0) * M_LNG * COSL, y: -(lat - LAT0) * M_LAT });
+
+/* A lat/lng box as a world-space rect — north-up, so drawImage lands square. */
+function worldRect(b) {
+  const tl = proj(b.maxLat, b.minLng), br = proj(b.minLat, b.maxLng);
+  return { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
+}
+
+const disp = m => S.units === 'yd' ? m * YD : m;
+const unit = () => S.units === 'yd' ? 'yd' : 'm';
+const fmt  = (m, d = 0) => m == null ? '—' : disp(m).toFixed(d) + unit();
+
+/* ── Per-hole prep: rasters, green extents, play axis ─────────────────────── */
+function prepare(h) {
+  if (h._ready) return h;
+  const N = h.res, b = h.bounds;
+
+  // Offscreen raster with rough left transparent so holes composite cleanly.
+  const off = document.createElement('canvas');
+  off.width = off.height = N;
+  const img = ctx.createImageData(N, N);
+  const greenPts = [], waterPts = [];
+  for (let i = 0; i < N; i++) {
+    const row = h.rows[i];
+    for (let j = 0; j < N; j++) {
+      const code = row[j], o = (i * N + j) * 4, c = LIE[code] || LIE.r;
+      img.data[o] = c[0]; img.data[o+1] = c[1]; img.data[o+2] = c[2];
+      img.data[o+3] = code === 'r' ? 0 : 255;
+      if (code === 'g' || code === 'w') {
+        const lat = b.maxLat - (b.maxLat - b.minLat) * i / (N - 1);
+        const lng = b.minLng + (b.maxLng - b.minLng) * j / (N - 1);
+        (code === 'g' ? greenPts : waterPts).push(proj(lat, lng));
+      }
+    }
+  }
+  off.getContext('2d').putImageData(img, 0, 0);
+  h._img = off;
+
+  h._rect = worldRect(b);
+
+  h._tees  = (h.tee_boxes || []).map(t => ({ ...t, p: proj(t.lat, t.lng) }));
+
+  // Tees you can select. Where scorecard.py has placed the club's own sets they
+  // are the whole list, longest first — one of them is the tee you played, and
+  // the rest supersede the mapped centroids they were derived from. Without a
+  // card, fall back to the played tee, then those centroids.
+  const cardTees = (h.card_tees || []).map(t => ({
+    ...t, p: proj(t.lat, t.lng), kind: 'card',
+    label: t.name, color: teeColor(t.name),
+  }));
+  h._teeOpts = cardTees.length ? cardTees : [
+    ...(h.played_tees || []).map(t => ({
+      ...t, p: proj(t.lat, t.lng), kind: 'played',
+      label: t.name, color: teeColor(t.name),
+    })),
+    ...(h.tee_boxes || []).map((t, i) => ({
+      ...t, p: proj(t.lat, t.lng), kind: 'map',
+      label: 'Mapped ' + (i + 1), color: null,
+    })),
+  ];
+
+  h._green = h.green_center ? proj(h.green_center.lat, h.green_center.lng) : null;
+  h._aim   = h.aim ? proj(h.aim.lat, h.aim.lng) : h._green;
+  h._pins  = (h.pins || []).map(p => ({ ...p, p: proj(p.lat, p.lng) }));
+  h._bunk  = (h.bunkers || []).map(x => ({ ...x, p: proj(x.lat, x.lng) }));
+
+  // Play axis: back tee -> green. Rotation makes this point up the screen.
+  const t0 = h._tees[0] ? h._tees[0].p : { x: 0, y: 0 };
+  const gp = h._green || t0;
+  const ax = gp.x - t0.x, ay = gp.y - t0.y;
+  const len = Math.hypot(ax, ay) || 1;
+  h._axis = { x: ax / len, y: ay / len };
+  // pages.py derives the same rotation; take its value when present so the page
+  // it computed and the frame we draw in cannot drift apart.
+  h._rot  = h.page ? h.page.rot : -Math.PI / 2 - Math.atan2(ay, ax);
+
+  // Front / back of green measured along the play axis from the green centre.
+  if (greenPts.length && h._green) {
+    let lo = Infinity, hi = -Infinity;
+    for (const p of greenPts) {
+      const d = (p.x - h._green.x) * h._axis.x + (p.y - h._green.y) * h._axis.y;
+      if (d < lo) lo = d; if (d > hi) hi = d;
+    }
+    h._greenLo = lo; h._greenHi = hi;   // negative = toward the tee
+  }
+  h._greenPts = greenPts;
+  h._hasWater = waterPts.length > 0;
+  h._corr = corridor(h);
+
+  // pages.py decides the page so that satellite.py can fetch imagery covering
+  // it exactly; recomputing it here is only a fallback for a course JSON built
+  // before that step existed.
+  h._page = h.page || pageRect(h);
+
+  // Imagery is drawn on the box it was actually fetched for.
+  h._satRect = worldRect(h.sat_bounds || b);
+  if (h.sat) { const im = new Image(); im.onload = () => { if (S.sat) draw(); }; im.src = h.sat; h._sat = im; }
+  h._ready = true;
+  return h;
+}
+
+/* ── Play-axis frame ──────────────────────────────────────────────────────────
+   Everything below works in rotated coordinates: y runs down the hole (green at
+   the low end, tee at the high end) and x runs across it. `rotate` converts a
+   world point; `corridor` is the band around the tee->green line that counts as
+   this hole, since a hole's bounding box routinely clips its neighbour.        */
+const rotate = (p, c, s) => ({ x: p.x * c - p.y * s, y: p.x * s + p.y * c });
+
+function corridor(h) {
+  const t0 = (h._teeOpts[0] || {}).p, g0 = h._green;
+  if (!t0 || !g0) return null;
+  const c = Math.cos(h._rot), s = Math.sin(h._rot);
+  const tee = rotate(t0, c, s), green = rotate(g0, c, s);
+  return {
+    tee, green,
+    lo: Math.min(tee.y, green.y) - CORRIDOR_END,
+    hi: Math.max(tee.y, green.y) + CORRIDOR_END,
+  };
+}
+
+/* Centre of the hole at this point down the play axis — the straight tee->green
+   line, held at the endpoints beyond the tee and past the green. */
+function corridorX(co, ry) {
+  const d = co.green.y - co.tee.y;
+  const f = d === 0 ? 0 : clamp((ry - co.tee.y) / d, 0, 1);
+  return co.tee.x + f * (co.green.x - co.tee.x);
+}
+const inCorridor = (co, rx, ry) =>
+  ry >= co.lo && ry <= co.hi && Math.abs(rx - corridorX(co, ry)) <= CORRIDOR_HALF;
+
+/* Walk every mapped cell that is not rough and inside the corridor. */
+function eachFeature(h, fn) {
+  const c = Math.cos(h._rot), s = Math.sin(h._rot);
+  const co = h._corr, N = h.res, b = h.bounds;
+  for (let i = 0; i < N; i++) {
+    const row = h.rows[i];
+    const lat = b.maxLat - (b.maxLat - b.minLat) * i / (N - 1);
+    for (let j = 0; j < N; j++) {
+      if (row[j] === 'r') continue;
+      const r = rotate(proj(lat, b.minLng + (b.maxLng - b.minLng) * j / (N - 1)), c, s);
+      if (co && !inCorridor(co, r.x, r.y)) continue;
+      fn(r, row[j]);
+    }
+  }
+}
+
+/* The hole's page: everything worth seeing, in play-axis coordinates, grown to
+   a constant aspect ratio so hole 4 and hole 18 print on the same shaped card.
+   Growing (never cropping) is what keeps the ratio fixed without losing a
+   dogleg — short holes simply carry more air around them. */
+function pageRect(h) {
+  const c = Math.cos(h._rot), s = Math.sin(h._rot);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const grow = r => {
+    if (r.x < x0) x0 = r.x; if (r.x > x1) x1 = r.x;
+    if (r.y < y0) y0 = r.y; if (r.y > y1) y1 = r.y;
+  };
+  const add = p => { if (p) grow(rotate(p, c, s)); };
+
+  eachFeature(h, grow);
+
+  // …plus anything we draw that could sit outside it.
+  h._teeOpts.forEach(t => add(t.p));
+  h._pins.forEach(p => add(p.p));
+  add(h._green); add(h._aim);
+  for (const sh of h.shots || []) {
+    if (sh.startLat) add(proj(sh.startLat, sh.startLng));
+    if (sh.endLat)   add(proj(sh.endLat, sh.endLng));
+  }
+  if (!isFinite(x0)) { x0 = -50; x1 = 50; y0 = -50; y1 = 50; }
+
+  x0 -= PAGE_PAD; x1 += PAGE_PAD; y0 -= PAGE_PAD; y1 += PAGE_PAD;
+
+  const w = x1 - x0, ht = y1 - y0;
+  if (w / ht < PAGE_AR) {
+    const air = (ht * PAGE_AR - w) / 2; x0 -= air; x1 += air;
+  } else {
+    const air = (w / PAGE_AR - ht) / 2; y0 -= air; y1 += air;
+  }
+  return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+}
+
+/* ── Playing area ─────────────────────────────────────────────────────────────
+   Rough is play. What is not play is what lies outside the hole, so the lit
+   area has to be the whole corridor — tee through the carry, down the fairway
+   and its rough, out to the greenside bunkers — not just the mapped features.
+
+   Slice the hole across the play axis and, in each slice, take the outermost
+   mapped feature on either side: everything between them is inside the hole, no
+   matter what the mapping calls it. Slices with nothing mapped at all are the
+   carry off the tee, so they are bridged by interpolating between the slices
+   that do have something. Then widen by PLAY_BUFFER metres of rough all round.  */
+function playBand(h) {
+  if (h._band !== undefined) return h._band;
+
+  const pg = h._page, co = h._corr;
+  const n = PLAY_SLICES, dy = pg.h / n;
+  const lo = new Array(n).fill(Infinity), hi = new Array(n).fill(-Infinity);
+
+  const mark = (rx, ry, rad) => {
+    const a = Math.max(0, Math.floor((ry - rad - pg.y0) / dy));
+    const b = Math.min(n - 1, Math.floor((ry + rad - pg.y0) / dy));
+    for (let i = a; i <= b; i++) {
+      if (rx - rad < lo[i]) lo[i] = rx - rad;
+      if (rx + rad > hi[i]) hi[i] = rx + rad;
+    }
+  };
+
+  eachFeature(h, r => mark(r.x, r.y, 0));
+  const c = Math.cos(h._rot), s = Math.sin(h._rot);
+  h._teeOpts.forEach(t => { const r = rotate(t.p, c, s); mark(r.x, r.y, 8); });
+  h._pins.forEach(p => { const r = rotate(p.p, c, s); mark(r.x, r.y, 8); });
+
+  let first = 0, last = n - 1;
+  while (first < n && lo[first] === Infinity) first++;
+  while (last >= 0 && lo[last] === Infinity) last--;
+  if (first > last) return h._band = null;
+
+  for (let i = first; i <= last; i++) {
+    if (lo[i] !== Infinity) continue;
+    let nxt = i;
+    while (nxt <= last && lo[nxt] === Infinity) nxt++;
+    const f = (i - (i - 1)) / (nxt - (i - 1));   // one step into the gap
+    lo[i] = lo[i - 1] + (lo[nxt] - lo[i - 1]) * f;
+    hi[i] = hi[i - 1] + (hi[nxt] - hi[i - 1]) * f;
+  }
+
+  const spans = [];
+  for (let i = first; i <= last; i++) {
+    const y = pg.y0 + (i + 0.5) * dy;
+    let x0 = lo[i] - PLAY_BUFFER, x1 = hi[i] + PLAY_BUFFER;
+    if (co) {                       // a stray mapped feature must not light the world
+      const cx = corridorX(co, y);
+      x0 = Math.max(x0, cx - PLAY_MAX_HALF);
+      x1 = Math.min(x1, cx + PLAY_MAX_HALF);
+    }
+    spans.push({ y, x0, x1 });
+  }
+  return h._band = {
+    spans,
+    yTop: pg.y0 + first * dy - PLAY_BUFFER,
+    yBot: pg.y0 + (last + 1) * dy + PLAY_BUFFER,
+  };
+}
+
+/* ── Focus veil ───────────────────────────────────────────────────────────────
+   A page-shaped wash punched through wherever the hole is: the playing corridor
+   above, unioned with the mapped features themselves so an outlying bunker is
+   never swallowed. Blurred by FEATHER_M metres so the edge reads as light
+   falling off rather than a cut. Cached per theme colour. */
+function veilFor(h, color) {
+  if (h._veil && h._veil.key === color) return h._veil.cv;
+
+  const pg = h._page;
+  const H = 720, W = Math.round(H * pg.w / pg.h);
+  const k = W / pg.w;                       // canvas px per metre
+  const c = Math.cos(h._rot), s = Math.sin(h._rot);
+  const band = playBand(h);
+
+  const soft = document.createElement('canvas');
+  soft.width = W; soft.height = H;
+  const sc = soft.getContext('2d');
+  sc.imageSmoothingEnabled = true; sc.imageSmoothingQuality = 'high';
+  // Blur is measured in canvas pixels and ignores the transform, so it is set
+  // once here from the metre feather and left alone.
+  sc.filter = `blur(${Math.max(2, k * FEATHER_M)}px)`;
+
+  if (band && band.spans.length > 1) {
+    sc.setTransform(k, 0, 0, k, -k * pg.x0, -k * pg.y0);   // rotated metres -> px
+    const sp = band.spans, end = sp.length - 1;
+    sc.fillStyle = '#fff';
+    sc.beginPath();
+    sc.moveTo(sp[0].x0, band.yTop);
+    for (const p of sp) sc.lineTo(p.x0, p.y);
+    sc.lineTo(sp[end].x0, band.yBot);
+    sc.lineTo(sp[end].x1, band.yBot);
+    for (let i = end; i >= 0; i--) sc.lineTo(sp[i].x1, sp[i].y);
+    sc.lineTo(sp[0].x1, band.yTop);
+    sc.closePath();
+    sc.fill();
+  }
+
+  // Union with the features themselves, stacked so the soft edge builds up to
+  // roughly the same buffer the corridor gets.
+  sc.setTransform(k * c, k * s, -k * s, k * c, -k * pg.x0, -k * pg.y0);
+  for (let i = 0; i < 4; i++) sc.drawImage(h._img, h._rect.x, h._rect.y, h._rect.w, h._rect.h);
+  sc.filter = 'none';
+
+  const cv2 = document.createElement('canvas');
+  cv2.width = W; cv2.height = H;
+  const vc = cv2.getContext('2d');
+  vc.fillStyle = color;
+  vc.fillRect(0, 0, W, H);
+  vc.globalCompositeOperation = 'destination-out';
+  vc.drawImage(soft, 0, 0);
+
+  h._veil = { key: color, cv: cv2 };
+  return cv2;
+}
+COURSE.holes.forEach(prepare);
+
+// Course-wide frame for the overview — 18 overlapping hole crops would seam.
+let COURSE_SAT = null, COURSE_RECT = null;
+{
+  const b = COURSE.bounds;
+  const tl = proj(b.maxLat, b.minLng), br = proj(b.minLat, b.maxLng);
+  COURSE_RECT = { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
+  if (COURSE.sat) {
+    COURSE_SAT = new Image();
+    COURSE_SAT.onload = () => { if (S.sat) draw(); };
+    COURSE_SAT.src = COURSE.sat;
+  }
+}
+const HAS_SAT = !!COURSE.sat || COURSE.holes.some(h => h.sat);
+
+/* ── View transform ───────────────────────────────────────────────────────── */
+let T = { s: 1, rot: 0, rcx: 0, rcy: 0, cx: 0, cy: 0, dpr: 1 };
+
+/* `fitBox` takes an extent already expressed in rotated (screen-aligned) space;
+   `fit` is the same thing for a loose bag of world points. Zoom and pan ride on
+   top of the fit, so the fit itself stays the reproducible "home" view. */
+function fitBox(minx, maxx, miny, maxy, rot, pad) {
+  const W = cv.clientWidth, H = cv.clientHeight;
+  const sc = Math.min(W / Math.max(maxx - minx, 1), H / Math.max(maxy - miny, 1)) * pad * S.zoom;
+  T = { s: sc, rot, rcx: (minx + maxx) / 2, rcy: (miny + maxy) / 2,
+        cx: W / 2 + S.pan.x, cy: H / 2 + S.pan.y,
+        dpr: PRINT_DPR || window.devicePixelRatio || 1 };
+}
+
+function fit(points, rot, pad = 0.90) {
+  const c = Math.cos(rot), s = Math.sin(rot);
+  let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+  for (const p of points) {
+    const rx = p.x * c - p.y * s, ry = p.x * s + p.y * c;
+    if (rx < minx) minx = rx; if (rx > maxx) maxx = rx;
+    if (ry < miny) miny = ry; if (ry > maxy) maxy = ry;
+  }
+  fitBox(minx, maxx, miny, maxy, rot, pad);
+}
+
+/* Recompute T for the current view without repainting — the zoom-about-cursor
+   maths needs the new transform before it can work out the pan correction. */
+function layout() {
+  if (S.view === 'hole') {
+    const pg = COURSE.holes[S.hole]._page;
+    fitBox(pg.x0, pg.x1, pg.y0, pg.y1, COURSE.holes[S.hole]._rot, PRINT_FIT || 0.96);
+  } else {
+    const pts = [];
+    for (const h of COURSE.holes) {
+      pts.push({ x: h._rect.x, y: h._rect.y },
+               { x: h._rect.x + h._rect.w, y: h._rect.y + h._rect.h });
+    }
+    fit(pts, 0, 0.94);
+  }
+}
+
+/* The page rect as a screen-space box. In hole view T.rot is the hole's own
+   rotation, so the page is axis-aligned on screen and this is exact. */
+function pageOnScreen(pg) {
+  return {
+    x: T.cx + T.s * (pg.x0 - T.rcx), y: T.cy + T.s * (pg.y0 - T.rcy),
+    w: T.s * pg.w, h: T.s * pg.h,
+  };
+}
+function toScreen(p) {
+  const c = Math.cos(T.rot), s = Math.sin(T.rot);
+  const rx = p.x * c - p.y * s, ry = p.x * s + p.y * c;
+  return { x: T.cx + T.s * (rx - T.rcx), y: T.cy + T.s * (ry - T.rcy) };
+}
+function toWorld(sx, sy) {
+  const c = Math.cos(T.rot), s = Math.sin(T.rot);
+  const rx = (sx - T.cx) / T.s + T.rcx, ry = (sy - T.cy) / T.s + T.rcy;
+  return { x: rx * c + ry * s, y: -rx * s + ry * c };
+}
+const applyWorld  = () => ctx.setTransform(T.dpr*T.s*Math.cos(T.rot), T.dpr*T.s*Math.sin(T.rot),
+                                           -T.dpr*T.s*Math.sin(T.rot), T.dpr*T.s*Math.cos(T.rot),
+                                           T.dpr*(T.cx - T.s*T.rcx), T.dpr*(T.cy - T.s*T.rcy));
+const applyScreen = () => ctx.setTransform(T.dpr, 0, 0, T.dpr, 0, 0);
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* The tee currently in play: whichever option S.teeIdx points at, defaulting to
+   the first (the back tee of the card, or the tee you played when there is no
+   card). Selecting a hole re-points it at the chosen tee set — see goto(). */
+const selectedTee = h => h._teeOpts[clamp(S.teeIdx, 0, h._teeOpts.length - 1)] || null;
+
+/* Which option is the chosen set on this hole; 0 (the back tee) if it has none. */
+const teeIdxOfSet = h => {
+  const i = h._teeOpts.findIndex(t => t.kind === 'card' && t.name === S.teeSet);
+  return i < 0 ? 0 : i;
+};
+
+/* Hole length: the number the club prints for the chosen tee. It is measured
+   along the playing line, so on a dogleg it is tens of metres longer than the
+   straight tee->green distance the mapping gives — the card is what a yardage
+   book quotes, and the straight line stays available as `to_green_m`. Without a
+   card, fall back to the tee you played and the pin your watch logged. */
+const cardLen = h => (h.card_len && S.teeSet ? h.card_len[S.teeSet] : null) ?? null;
+const holeLen = h => {
+  const c = cardLen(h);
+  if (c != null) return c;
+  const t = h._teeOpts[0];
+  if (!t) return h.length_m;
+  return t.kind === 'played' ? (t.to_pin_m ?? t.to_green_m) : h.length_m;
+};
+
+/* ── Drawing ──────────────────────────────────────────────────────────────── */
+function clearGround(fillRough) {
+  applyScreen();
+  ctx.clearRect(0, 0, cv.clientWidth, cv.clientHeight);
+  ctx.fillStyle = fillRough
+    ? `rgb(${LIE.r[0]},${LIE.r[1]},${LIE.r[2]})`
+    : css('--sunk');
+  ctx.fillRect(0, 0, cv.clientWidth, cv.clientHeight);
+}
+
+function smooth() {
+  applyWorld();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+}
+function drawSat(img, rect) {
+  if (!img || !img.complete || !img.naturalWidth) return false;
+  smooth();
+  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
+  return true;
+}
+function drawFeatures(h, alpha) {
+  smooth();
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(h._img, h._rect.x, h._rect.y, h._rect.w, h._rect.h);
+  ctx.globalAlpha = 1;
+}
+
+function ring(center, radiusM, color, dash) {
+  applyWorld();
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radiusM, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.15 / T.s;
+  ctx.setLineDash(dash ? [6 / T.s, 5 / T.s] : []);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+const rot2 = (v, deg) => {
+  const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
+};
+
+function ringLabel(center, radiusM, dir, text, color) {
+  const w = { x: center.x + dir.x * radiusM, y: center.y + dir.y * radiusM };
+  const p = toScreen(w);
+  // Rings routinely run past the frame; don't paint labels that fell off it.
+  if (p.x < 22 || p.x > cv.clientWidth - 22 || p.y < 12 || p.y > cv.clientHeight - 12) return;
+  applyScreen();
+  ctx.font = '600 10px ' + css('--font-mono');
+  const pad = 3.5, tw = ctx.measureText(text).width;
+  ctx.fillStyle = css('--panel');
+  ctx.globalAlpha = .88;
+  ctx.beginPath();
+  ctx.roundRect(p.x - tw / 2 - pad, p.y - 7.5, tw + pad * 2, 15, 3);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, p.x, p.y);
+}
+
+function marker(p, kind, label, color) {
+  const sp = toScreen(p);
+  applyScreen();
+  if (kind === 'pin') {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.x, sp.y - 15); ctx.stroke();
+    ctx.fillStyle = css('--hot');
+    ctx.beginPath(); ctx.moveTo(sp.x, sp.y - 15); ctx.lineTo(sp.x + 10, sp.y - 11.5);
+    ctx.lineTo(sp.x, sp.y - 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(sp.x, sp.y, 2.4, 0, 7); ctx.fill();
+  } else if (kind === 'tee') {
+    // A named tee is drawn in its own colour with a dark keyline, so a white
+    // tee still reads against the fairway and yellow never looks like amber UI.
+    ctx.fillStyle = color || css('--tee');
+    ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.rect(sp.x - 5.5, sp.y - 5.5, 11, 11); ctx.fill(); ctx.stroke();
+  }
+  if (label) {
+    ctx.font = '600 10px ' + css('--font-mono');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 3;
+    ctx.fillText(label, sp.x, sp.y + 8);
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawShots(h) {
+  const byRound = {};
+  for (const s of h.shots) (byRound[s.roundID] ||= []).push(s);
+  for (const rid in byRound) {
+    const list = byRound[rid].slice().sort((a, b) => a.shot - b.shot);
+    applyWorld();
+    ctx.beginPath();
+    list.forEach((s, i) => {
+      const a = proj(s.startLat, s.startLng);
+      if (i === 0) ctx.moveTo(a.x, a.y); else ctx.lineTo(a.x, a.y);
+      if (s.endLat) { const e = proj(s.endLat, s.endLng); ctx.lineTo(e.x, e.y); }
+    });
+    ctx.strokeStyle = 'rgba(255,255,255,.92)';
+    ctx.lineWidth = 2 / T.s; ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    list.forEach(s => {
+      const sp = toScreen(proj(s.startLat, s.startLng));
+      applyScreen();
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, 4.2, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#111'; ctx.font = '700 8px ' + css('--font-mono');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(s.shot, sp.x, sp.y + .5);
+    });
+  }
+}
+
+function drawHole() {
+  const h = COURSE.holes[S.hole];
+  const tee = selectedTee(h) || { p: { x: 0, y: 0 } };
+  const aim = h._aim || h._green;
+  const toM = v => S.units === 'yd' ? v / YD : v;
+
+  // Fit the page, not the hole's own bounding box — see pageRect(). Rings are
+  // circles hundreds of metres wide; letting them drive the fit would shrink
+  // the hole to a sliver, so they clip at the frame instead, which is how a
+  // yardage book draws them anyway.
+  layout();
+  const page = pageOnScreen(h._page);
+
+  // Matte first, then everything else clipped to the page. The clip is baked
+  // in device space at clip() time, so the world-space passes below inherit it.
+  applyScreen();
+  ctx.clearRect(0, 0, cv.clientWidth, cv.clientHeight);
+  ctx.fillStyle = css('--matte');
+  ctx.fillRect(0, 0, cv.clientWidth, cv.clientHeight);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(page.x, page.y, page.w, page.h);
+  ctx.clip();
+
+  const sat = S.sat && h._sat && h._sat.complete;
+  ctx.fillStyle = `rgb(${LIE.r[0]},${LIE.r[1]},${LIE.r[2]})`;
+  ctx.fillRect(page.x, page.y, page.w, page.h);
+  if (sat) drawSat(h._sat, h._satRect);
+  drawFeatures(h, sat ? 1 - S.satOp : 1);
+
+  if (S.focus) {
+    applyScreen();
+    ctx.globalAlpha = VEIL_A;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(veilFor(h, css('--veil')), page.x, page.y, page.w, page.h);
+    ctx.globalAlpha = 1;
+  }
+
+  const teeC = css('--tee'), grnC = css('--grn');
+  const up = h._axis;                       // tee -> green, i.e. up the screen
+  const down = { x: -up.x, y: -up.y };
+
+  const reach = dist(tee.p, aim);
+  const teeShown   = TEE_RINGS.filter(r => toM(r) <= reach * 1.15);
+  const greenShown = GREEN_RINGS.filter(r => toM(r) <= reach * 1.05);
+
+  if (S.rings.tee)   for (const r of teeShown)   ring(tee.p, toM(r), teeC, false);
+  if (S.rings.green) for (const r of greenShown) ring(aim,   toM(r), grnC, true);
+  if (S.shots) drawShots(h);
+
+  // Labels last, and off the centre line: a tee ring and a green ring often land
+  // at the same point on the axis (200 from the tee ≈ 100 to the green), so they
+  // are splayed to opposite sides of the corridor.
+  // Every 25 gets a ring, but only every 50 gets a number — the full set of
+  // green labels crowds the corridor without telling you anything new.
+  const teeDir = rot2(up, -32), grnDir = rot2(down, -32);
+  if (S.rings.tee)   for (const r of teeShown)   ringLabel(tee.p, toM(r), teeDir, r + unit(), teeC);
+  if (S.rings.green) for (const r of greenShown) if (r % 50 === 0) ringLabel(aim, toM(r), grnDir, String(r), grnC);
+
+  // The label under the tee is the card's length where there is one — the number
+  // you would read off the marker plate — not the straight line to the pin.
+  marker(tee.p, 'tee', h._teeOpts.length > 1
+    ? fmt(tee.card_m != null ? tee.card_m : dist(tee.p, aim)) : '', tee.color);
+  if (S.pins) h._pins.forEach(p => marker(p.p, 'pin'));
+  else if (h._green) marker(h._green, 'pin');
+
+  if (S.measure) {
+    const mp = toScreen(S.measure);
+    applyScreen();
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = css('--text'); ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(toScreen(tee.p).x, toScreen(tee.p).y); ctx.lineTo(mp.x, mp.y);
+    if (aim) ctx.lineTo(toScreen(aim).x, toScreen(aim).y);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = css('--hot');
+    ctx.beginPath(); ctx.arc(mp.x, mp.y, 5, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  ctx.restore();                        // drop the page clip
+  applyScreen();
+  ctx.strokeStyle = css('--frame');
+  ctx.lineWidth = 1;
+  ctx.strokeRect(page.x + .5, page.y + .5, page.w - 1, page.h - 1);
+}
+
+function drawCourse() {
+  layout();
+  const sat = S.sat && COURSE_SAT && COURSE_SAT.complete;
+  clearGround(!sat);
+  if (sat) drawSat(COURSE_SAT, COURSE_RECT);
+  for (const h of COURSE.holes) drawFeatures(h, sat ? 1 - S.satOp : 1);
+
+  if (S.shots) COURSE.holes.forEach(drawShots);
+
+  for (const h of COURSE.holes) {
+    const t = h._teeOpts[0], g = h._green;
+    if (!t || !g) continue;
+    const mid = toScreen({ x: (t.p.x + g.x) / 2, y: (t.p.y + g.y) / 2 });
+    applyScreen();
+    ctx.fillStyle = 'rgba(0,0,0,.62)';
+    ctx.beginPath(); ctx.arc(mid.x, mid.y, 11, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 12px ' + css('--font-mono');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(h.num, mid.x, mid.y + .5);
+  }
+  if (S.pins) for (const h of COURSE.holes) h._pins.forEach(p => marker(p.p, 'pin'));
+}
+
+function draw() {
+  // Must agree with the dpr fitBox() bakes into T, or the transform and the
+  // bitmap disagree and the render comes out scaled.
+  const dpr = PRINT_DPR || window.devicePixelRatio || 1;
+  cv.width = Math.round(cv.clientWidth * dpr);
+  cv.height = Math.round(cv.clientHeight * dpr);
+  if (S.view === 'hole') drawHole(); else drawCourse();
+  applyScreen();
+  renderHUD();
+}
+
+/* ── HUD + panel ──────────────────────────────────────────────────────────── */
+function renderHUD() {
+  const hud = document.getElementById('hud');
+  if (S.view !== 'hole') { hud.hidden = true; return; }
+  hud.hidden = false;
+  const h = COURSE.holes[S.hole];
+  const tee = selectedTee(h);
+  const p = S.measure || S.cursor;
+  const aim = h._aim || h._green;
+  if (!p || !aim) {
+    document.getElementById('hudTee').textContent = '—';
+    document.getElementById('hudGrn').textContent = '—';
+    document.getElementById('hudFB').textContent = '—';
+    return;
+  }
+  document.getElementById('hudTee').textContent = tee ? fmt(dist(tee.p, p)) : '—';
+  document.getElementById('hudGrn').textContent = fmt(dist(p, aim));
+  if (h._greenLo != null) {
+    const along = (p.x - aim.x) * h._axis.x + (p.y - aim.y) * h._axis.y;
+    const front = Math.abs(-along + h._greenLo), back = Math.abs(-along + h._greenHi);
+    document.getElementById('hudFB').textContent =
+      `${disp(Math.min(front, back)).toFixed(0)} / ${disp(Math.max(front, back)).toFixed(0)}`;
+  }
+}
+
+function renderLegend() {
+  const keys = S.view === 'hole'
+    ? Object.keys(LIE_NAME).filter(k => k === 'r' || COURSE.holes[S.hole].vocab[
+        {t:'tee',f:'fairway',g:'green',b:'bunker',w:'water',r:'rough'}[k]])
+    : ['t','f','g','b','w','r'];
+  document.getElementById('legend').innerHTML = keys.map(k =>
+    `<span><i style="background:rgb(${LIE[k].join(',')})"></i>${LIE_NAME[k]}</span>`).join('')
+    + (S.view === 'hole'
+      ? `<span><i style="background:${css('--tee')}"></i>From tee</span>
+         <span><i style="background:${css('--grn')}"></i>To green</span>` : '');
+}
+
+const credit = () => COURSE.satCredit
+  ? ` Aerial imagery © ${COURSE.satCredit}.` : '';
+
+const scoreClass = (sc, par) => sc == null ? '' :
+  sc < par ? 'sc-under' : sc === par ? 'sc-par' : sc === par + 1 ? 'sc-b1' : 'sc-b2';
+
+function holeScore(h) {
+  const s = h.shots.find(x => x.score != null);
+  return s ? s.score : null;
+}
+
+function renderRail() {
+  document.getElementById('allBtn').setAttribute('aria-current', S.view === 'course');
+  document.getElementById('chips').innerHTML = COURSE.holes.map((h, i) => {
+    const sc = holeScore(h);
+    return `<button class="chip" data-h="${i}" aria-current="${S.view === 'hole' && S.hole === i}">
+      <span class="chip-n">${h.num}</span>
+      ${sc != null ? `<span class="chip-sc ${scoreClass(sc, h.par)}">${sc}</span>` : ''}
+      <span class="chip-par">PAR ${h.par}</span>
+    </button>`;
+  }).join('');
+  document.querySelectorAll('.chip').forEach(b => b.onclick = () => goto('hole', +b.dataset.h));
+}
+
+function renderPanel() {
+  const el = document.getElementById('panel');
+  if (S.view === 'course') {
+    const r = COURSE.rounds[0];
+    const totalLen = COURSE.holes.reduce((a, h) => a + (holeLen(h) || 0), 0);
+    const totalPar = COURSE.holes.reduce((a, h) => a + h.par, 0);
+    const teeName = S.teeSet
+      || COURSE.holes[0]._teeOpts.find(t => t.kind === 'played')?.label;
+
+    // A card's own OUT / IN / TOTAL, so the column adds up the way it does on the
+    // starter's sheet rather than to whatever the mapping measured.
+    const sub = (span, label) => {
+      const holes = COURSE.holes.filter(h => span.includes(h.num));
+      const scores = holes.map(holeScore).filter(s => s != null);
+      const len = holes.reduce((a, h) => a + (holeLen(h) || 0), 0);
+      const par = holes.reduce((a, h) => a + h.par, 0);
+      return `<tr class="sub"><td class="n">${label}</td><td class="n">${par}</td>
+        <td class="n"></td><td class="n">${len ? disp(len).toFixed(0) : '—'}</td>
+        <td class="n">${scores.length === holes.length ? scores.reduce((a, b) => a + b, 0) : '—'}</td>
+        <td class="n"></td></tr>`;
+    };
+    const nums = COURSE.holes.map(h => h.num);
+    const rows = COURSE.holes.map(h => {
+      const sc = holeScore(h);
+      const len = holeLen(h);
+      return `<tr><td class="n">${h.num}</td><td class="n">${h.par}</td>
+        <td class="n" style="color:var(--faint)">${h.si ?? ''}</td>
+        <td class="n">${len ? disp(len).toFixed(0) : '—'}</td>
+        <td class="n">${sc ?? '—'}</td>
+        <td class="n" style="color:${sc == null ? 'inherit' : sc > h.par ? css('--hot') : css('--grn')}">
+          ${sc == null ? '' : (sc - h.par > 0 ? '+' : '') + (sc - h.par)}</td></tr>`
+        + (h.num === 9 && nums.includes(18) ? sub([1,2,3,4,5,6,7,8,9], 'OUT') : '');
+    }).join('')
+      + (nums.includes(18) ? sub([10,11,12,13,14,15,16,17,18], 'IN') : '')
+      + sub(nums, 'TOT');
+
+    const teeRows = CARD ? CARD.tees.map(t =>
+      `<tr><td><i class="dot" style="background:${teeColor(t.name)}"></i>${t.name}</td>
+        <td class="n" style="color:var(--faint)">${t.code ?? ''}</td>
+        <td class="n">${disp(t.total).toFixed(0)}${unit()}</td></tr>`).join('') : '';
+
+    el.innerHTML = `
+      <div class="bigno"><b>${COURSE.holes.length}</b><div class="meta">
+        <span class="par">PAR ${totalPar}</span>
+        <span class="len">${disp(totalLen).toFixed(0)}${unit()}</span>
+        ${teeName ? `<span class="par">${teeName} tees</span>` : ''}</div></div>
+      <div class="grid2">
+        <div class="kv"><div class="lbl">Rounds</div><div class="v">${COURSE.rounds.length}</div></div>
+        <div class="kv"><div class="lbl">Best</div><div class="v">${r ? r.totalShots : '—'}</div></div>
+        <div class="kv"><div class="lbl">Fairways</div><div class="v">${r ? r.fir.toFixed(0) + '%' : '—'}</div></div>
+        <div class="kv"><div class="lbl">Greens</div><div class="v">${r ? r.gir.toFixed(0) + '%' : '—'}</div></div>
+      </div>
+      <section><h2>Scorecard${CARD ? ` — ${teeName}` : ''}</h2><div class="scroll"><table>
+        <thead><tr><th class="n">#</th><th class="n">Par</th><th class="n">SI</th>
+          <th class="n">${unit()}</th><th class="n">Sc</th><th class="n">+/−</th></tr></thead>
+        <tbody>${rows}</tbody></table></div></section>
+      ${teeRows ? `<section><h2>Tees</h2><table>
+        <thead><tr><th>Set</th><th class="n">Code</th><th class="n">Total</th></tr></thead>
+        <tbody>${teeRows}</tbody></table></section>` : ''}
+      <p class="note">Click any hole on the map or in the rail to open its yardage page.
+      Scroll to zoom, drag to pan.
+      Mapping reconstructed from Shot Scope at <code>${COURSE.holes[0].res}×${COURSE.holes[0].res}</code>
+      samples per hole. ${CARD
+        ? `Par, stroke index and every length come from the club's printed card;
+           the tee markers are placed on the ground from it${PLAYED_TEE
+             ? `, anchored on the ${PLAYED_TEE} tee positions your watch logged` : ''}.`
+        : teeName ? `Lengths measured from the ${teeName} tee positions logged by
+           your watch, not from the mapped teeing grounds.` : ''}${credit()}</p>`;
+    return;
+  }
+
+  const h = COURSE.holes[S.hole];
+  const tee = selectedTee(h);
+  const aim = h._aim || h._green;
+  const sc = holeScore(h);
+  const playLen = tee && tee.card_m != null ? tee.card_m
+    : tee && aim ? dist(tee.p, aim) : h.length_m;
+  const cur = clamp(S.teeIdx, 0, h._teeOpts.length - 1);
+
+  // Card length is the headline; the straight line to the green centre rides
+  // along behind it, because that is what the rings on the map are drawn to.
+  const teeBtns = h._teeOpts.map((t, i) =>
+    `<button class="teebtn" data-t="${i}" data-set="${t.kind === 'card' ? esc(t.name) : ''}"
+       aria-pressed="${i === cur}">
+      <span>${t.color ? `<i class="swatch" style="background:${t.color}"></i>` : ''}${t.label}${
+        t.played ? '<em>played</em>' : t.kind === 'played' ? '<em>played</em>' : ''}</span>
+      <b>${t.card_m != null ? fmt(t.card_m) : fmt(aim ? dist(t.p, aim) : t.to_green_m)}${
+        t.card_m != null ? `<i class="alt">${fmt(aim ? dist(t.p, aim) : t.to_green_m)}</i>` : ''
+      }</b></button>`).join('');
+
+  const bunk = h._bunk.filter(b => b.cells >= 4)
+    .sort((a, b) => a.to_green_m - b.to_green_m)
+    .map(b => `<tr><td>Bunker</td>
+      <td class="n">${tee ? fmt(dist(tee.p, b.p)) : '—'}</td>
+      <td class="n">${fmt(b.to_green_m)}</td></tr>`).join('');
+
+  const shots = h.shots.slice().sort((a, b) => a.shot - b.shot).map(s => `
+    <tr><td class="n">${s.shot}</td><td>${s.club_short || s.club}</td>
+    <td class="n">${s.distance_m ? disp(s.distance_m).toFixed(0) : '—'}</td>
+    <td style="color:var(--muted)">${s.lie || ''}→${s.toLie || ''}</td></tr>`).join('');
+
+  el.innerHTML = `
+    <div class="bigno"><b>${h.num}</b><div class="meta">
+      <span class="par">PAR ${h.par}${h.si != null ? ` · SI ${h.si}` : ''}${
+        sc != null ? ` · SCORED ${sc}` : ''}</span>
+      <span class="len">${fmt(playLen)}</span>
+      ${tee ? `<span class="par">from ${tee.label}${
+        tee.kind === 'map' ? '' : ' tee'}${tee.played ? ' (played)' : ''}</span>` : ''}
+    </div></div>
+
+    <div class="grid2">
+      <div class="kv"><div class="lbl">Green depth</div><div class="v">${
+        h._greenLo != null ? fmt(h._greenHi - h._greenLo) : '—'}</div></div>
+      <div class="kv"><div class="lbl">Bunkers</div><div class="v">${h._bunk.filter(b=>b.cells>=4).length}</div></div>
+      <div class="kv"><div class="lbl">Water</div><div class="v">${h._hasWater ? 'Yes' : 'No'}</div></div>
+      <div class="kv"><div class="lbl">Pin seen</div><div class="v">${h.pins.length}×</div></div>
+    </div>
+
+    ${h._teeOpts.length > 1 ? `<section><h2>Tees</h2><div class="tees">${teeBtns}</div></section>` : ''}
+    ${bunk ? `<section><h2>Bunkers</h2><table>
+      <thead><tr><th>Feature</th><th class="n">From tee</th><th class="n">To green</th></tr></thead>
+      <tbody>${bunk}</tbody></table></section>` : ''}
+    ${shots ? `<section><h2>Your shots</h2><table>
+      <thead><tr><th class="n">#</th><th>Club</th><th class="n">Dist</th><th>Lie</th></tr></thead>
+      <tbody>${shots}</tbody></table></section>` : ''}
+    <p class="note">Hover the map for live distances; click to drop a measuring point.
+    Scroll to zoom, drag to pan, <code>0</code> to reset.
+    Rings are ${unit()} from the tee (amber) and from the pin (cyan) &mdash;
+    cyan rings step every 25, numbered every 50.${teeNote(tee)}${credit()}</p>`;
+
+  el.querySelectorAll('.teebtn').forEach(b => b.onclick = () => {
+    S.teeIdx = +b.dataset.t;
+    // A card tee is a set, not just a spot: picking it here picks it everywhere.
+    if (b.dataset.set) { setTeeSet(b.dataset.set); return; }
+    refresh();
+  });
+}
+
+/* A book that quotes a distance should say what that distance stands on, so
+   every tee explains itself: the card's number, the straight line the rings are
+   drawn to, and how the marker got where it is. */
+function teeNote(t) {
+  if (!t) return '';
+  if (t.card_m == null) {
+    return t.kind === 'played'
+      ? ` The ${t.label} tee is the spot your watch logged for this tee shot${
+          t.snap_m ? `, nudged ${t.snap_m.toFixed(1)} m onto the mapped teeing ground` : ''}.`
+      : '';
+  }
+  const anchor = PLAYED_TEE || 'anchor';
+  const step = `sits the card's ${fmt(Math.abs(t.delta_m))} `
+    + `${t.delta_m < 0 ? 'ahead of' : 'behind'} the ${anchor} tee`;
+  const how = {
+    'anchor/played': 'is the spot your watch logged for this tee shot',
+    'anchor/mapped': 'is the teeing ground the mapping found farthest back',
+    'mapped-box': `${step}, on a teeing ground the mapping found there`,
+    'tee-cells': `${step}, nudged sideways onto the mapped teeing ground`,
+    'stepped': `${step}, along the line of the teeing grounds`,
+  }[t.source] || 'comes from the card';
+  return ` ${t.label} plays ${fmt(t.card_m)} on the club's card`
+    + `${t.to_green_m != null ? ` — ${fmt(t.to_green_m)} straight to the green centre` : ''}; `
+    + `the marker ${how}.`;
+}
+
+function refresh() { renderRail(); renderPanel(); renderLegend(); draw(); }
+
+/* Zoom and pan are per-view framing, not preferences — anything that changes
+   what you are looking at drops you back to the fitted view. */
+function resetView() { S.zoom = 1; S.pan.x = 0; S.pan.y = 0; showZoom(); }
+const showZoom = () => document.getElementById('zLvl').textContent = S.zoom.toFixed(1) + '×';
+
+function goto(view, hole) {
+  S.view = view;
+  if (hole != null) S.hole = hole;
+  S.measure = null;
+  S.teeIdx = teeIdxOfSet(COURSE.holes[S.hole]);
+  resetView();
+  refresh();
+}
+
+/* Changing the tee set changes every length in the book, so it re-points the
+   current hole at that set and repaints the lot. */
+function setTeeSet(name) {
+  S.teeSet = name;
+  S.teeIdx = teeIdxOfSet(COURSE.holes[S.hole]);
+  syncTeeSeg();
+  refresh();
+}
+
+function syncTeeSeg() {
+  document.querySelectorAll('#teeSeg button').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.set === S.teeSet));
+}
+
+/* ── Events ───────────────────────────────────────────────────────────────── */
+document.getElementById('allBtn').onclick = () => goto('course');
+
+const tog = (id, get, set) => {
+  const b = document.getElementById(id);
+  b.onclick = () => { set(!get()); b.setAttribute('aria-pressed', get()); refresh(); };
+  b.setAttribute('aria-pressed', get());
+};
+tog('tgTee',  () => S.rings.tee,   v => S.rings.tee = v);
+tog('tgGrn',  () => S.rings.green, v => S.rings.green = v);
+tog('tgShot', () => S.shots,       v => S.shots = v);
+tog('tgPin',  () => S.pins,        v => S.pins = v);
+tog('tgFocus',() => S.focus,       v => S.focus = v);
+
+if (HAS_SAT) {
+  document.getElementById('satRow').hidden = false;
+  tog('tgSat', () => S.sat, v => S.sat = v);
+  document.getElementById('satOp').oninput = e => { S.satOp = e.target.value / 100; draw(); };
+}
+
+const setUnits = u => {
+  S.units = u;
+  document.getElementById('uM').setAttribute('aria-pressed', u === 'm');
+  document.getElementById('uY').setAttribute('aria-pressed', u === 'yd');
+  refresh();
+};
+document.getElementById('uM').onclick = () => setUnits('m');
+document.getElementById('uY').onclick = () => setUnits('yd');
+
+const setTheme = t => {
+  document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('thL').setAttribute('aria-pressed', t === 'light');
+  document.getElementById('thD').setAttribute('aria-pressed', t === 'dark');
+  refresh();
+};
+document.getElementById('thL').onclick = () => setTheme('light');
+document.getElementById('thD').onclick = () => setTheme('dark');
+
+/* ── Zoom / pan ───────────────────────────────────────────────────────────────
+   Zoom is applied inside fit(), so changing S.zoom re-derives the transform from
+   the same home framing every time — no drift. To keep the point under the
+   cursor pinned we re-run layout() with the new scale and shift the pan by
+   however far that point moved. */
+const local = e => {
+  const r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+};
+
+function zoomAt(factor, sx, sy) {
+  const before = toWorld(sx, sy);
+  const next = clamp(S.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  if (next === S.zoom) return;
+  S.zoom = next;
+  layout();
+  const after = toScreen(before);
+  S.pan.x += sx - after.x;
+  S.pan.y += sy - after.y;
+  showZoom();
+  draw();
+}
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  // Trackpads report tiny per-event deltas and mice report ~100; the exponent
+  // keeps both feeling the same and makes zooming multiplicative either way.
+  const step = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+  const p = local(e);
+  zoomAt(Math.exp(-clamp(step, -240, 240) * 0.0022), p.x, p.y);
+}, { passive: false });
+
+const pointers = new Map();
+let drag = null, pinch = null;
+
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, local(e));
+  if (pointers.size === 1) {
+    drag = { ...local(e), moved: 0, pan: { ...S.pan } };
+    cv.classList.add('grabbing');
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) };
+    drag = null;
+  }
+});
+
+cv.addEventListener('pointermove', e => {
+  const p = local(e);
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, p);
+
+  if (pinch && pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch.d > 0) zoomAt(d / pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2);
+    pinch.d = d;
+    return;
+  }
+
+  if (drag) {
+    S.pan.x = drag.pan.x + (p.x - drag.x);
+    S.pan.y = drag.pan.y + (p.y - drag.y);
+    drag.moved = Math.max(drag.moved, Math.hypot(p.x - drag.x, p.y - drag.y));
+    draw();
+    return;
+  }
+
+  S.cursor = toWorld(p.x, p.y);
+  if (S.view === 'hole') renderHUD();
+});
+
+const endPointer = e => {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
+  if (drag) {
+    // A drag that barely moved was a click — measuring points and hole picking
+    // would otherwise fire every time you nudged the map.
+    if (drag.moved < 4) pick(local(e));
+    drag = null;
+    cv.classList.remove('grabbing');
+  }
+};
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+cv.addEventListener('pointerleave', () => { S.cursor = null; renderHUD(); });
+
+function pick(p) {
+  const w = toWorld(p.x, p.y);
+  if (S.view === 'course') {
+    let best = null, bd = Infinity;
+    COURSE.holes.forEach((h, i) => {
+      const t = h._teeOpts[0], g = h._green;
+      if (!t || !g) return;
+      const m = { x: (t.p.x + g.x) / 2, y: (t.p.y + g.y) / 2 };
+      const d = Math.min(dist(w, m), dist(w, t.p), dist(w, g));
+      if (d < bd) { bd = d; best = i; }
+    });
+    if (best != null) goto('hole', best);
+  } else {
+    S.measure = S.measure && dist(S.measure, w) < 8 / T.s ? null : w;
+    draw();
+  }
+}
+
+const center = () => ({ x: cv.clientWidth / 2, y: cv.clientHeight / 2 });
+document.getElementById('zIn').onclick  = () => { const c = center(); zoomAt(1.4, c.x, c.y); };
+document.getElementById('zOut').onclick = () => { const c = center(); zoomAt(1 / 1.4, c.x, c.y); };
+document.getElementById('zRst').onclick = () => { resetView(); draw(); };
+
+addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea, select')) return;
+  const step = h => goto('hole', (S.hole + h + COURSE.holes.length) % COURSE.holes.length);
+  // The book is a modal: it owns Escape, and swallows the map's own keys.
+  if (!document.getElementById('bookWrap').hidden) {
+    if (e.key === 'Escape') closeBook();
+    return;
+  }
+  if (e.key.toLowerCase() === 'b') openBook();
+  else if (e.key === 'Escape') goto('course');
+  else if (e.key === 'ArrowRight' && S.view === 'hole') step(1);
+  else if (e.key === 'ArrowLeft'  && S.view === 'hole') step(-1);
+  else if (e.key === '+' || e.key === '=') { const c = center(); zoomAt(1.4, c.x, c.y); }
+  else if (e.key === '-' || e.key === '_') { const c = center(); zoomAt(1 / 1.4, c.x, c.y); }
+  else if (e.key === '0') { resetView(); draw(); }
+  else if (e.key.toLowerCase() === 'f') document.getElementById('tgFocus').click();
+});
+
+// Both of these repaint, so they must stay off the canvas while the book owns it.
+new ResizeObserver(() => { if (!BOOK_BUSY) draw(); }).observe(document.querySelector('.stage'));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!BOOK_BUSY) refresh(); });
+
+/* ══ Yardage book ═══════════════════════════════════════════════════════════
+   Prints the hole cards you have been looking at. Everything the map shows is
+   whatever is toggled on screen — focus, rings, shots, pins, satellite, units —
+   so the way to personalise the book is to set the viewer up the way you want
+   it and then open this. The bar only owns what is specific to paper.
+
+   Each card is drawn by the ordinary drawHole(), onto an offscreen canvas the
+   size of the printed map at 300dpi, and captured as a JPEG. Rendering the real
+   thing rather than re-implementing it for print means the two cannot drift. */
+
+const MM_PX = 96 / 25.4;          // CSS px per mm, by definition
+const BOOK_DPI = 300;
+const BOOK_CSS_H = 760;           // CSS px per card: sets text size *relative* to the card
+const BOOK_MAX_DPR = 4;
+
+const PAGES = {
+  A6:     { w: 105,   h: 148,   m: 5  },
+  A5:     { w: 148,   h: 210,   m: 8  },
+  A4:     { w: 210,   h: 297,   m: 12 },
+  Letter: { w: 215.9, h: 279.4, m: 12 },
+  Pocket: { w: 101.6, h: 152.4, m: 5  },
+};
+
+const BOOK = { size: 'A6', per: 1, margin: 5, light: true, gray: false, top: false };
+// A render takes a couple of seconds, so a setting changed during one is
+// remembered and re-rendered rather than dropped.
+let BOOK_BUSY = false, BOOK_AGAIN = false;
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* Paper -> the boxes on it, all in mm. A6 with its default margin is the
+   baseline the ribbon's type scales off.
+
+   Two-up turns the paper landscape. A hole card is a tall 0.62, so two of them
+   side by side on portrait paper would each be squeezed to about half the height
+   the sheet has — landscape is the shape that fits two of them, and it is how
+   you would guillotine the sheet into cards anyway. */
+const BOOK_GAP = 1.6;      // mm between map and ribbon
+const BOOK_SLACK = 0.4;    // mm held back, so rounding cannot spill a page
+
+function bookGeom() {
+  const p = PAGES[BOOK.size], m = clamp(BOOK.margin, 0, 25);
+  const land = BOOK.per > 1;
+  const w = land ? p.h : p.w, h = land ? p.w : p.h;
+  const cw = w - 2 * m, ch = h - 2 * m;
+  const cardW = (cw - (BOOK.per - 1) * m) / BOOK.per;
+  return { w, h, m, land, cw, ch, cardW, scale: clamp(cardW / 93, 0.8, 2.2) };
+}
+
+/* @page cannot read custom properties in Chrome, so the rule is rewritten. */
+function setPageCSS() {
+  const g = bookGeom();
+  document.getElementById('pageCSS').textContent =
+    `@page { size: ${g.w}mm ${g.h}mm; margin: ${g.m}mm; }`;
+}
+
+/* The printed ribbon under each card: the four numbers you actually want in your
+   back pocket. The length is headed by the tee it is for, so a printed book says
+   which markers it was made for without a legend. */
+function ribbonHTML(h) {
+  const tee = h._teeOpts[teeIdxOfSet(h)] || h._teeOpts[0];
+  const len = holeLen(h);
+  const toPin = tee && tee.card_m == null && tee.kind === 'played' && tee.to_pin_m != null;
+  const head = tee && tee.card_m != null ? esc(tee.label) : toPin ? 'To pin' : 'To green';
+  const depth = h._greenLo != null ? fmt(h._greenHi - h._greenLo) : '—';
+  const cell = (k, v) => `<div class="c"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  return `<div class="ribbon">
+    <div class="no">${h.num}</div>
+    <div class="cells">
+      ${cell('Par', h.par ?? '—')}
+      ${h.si != null ? cell('SI', h.si) : ''}
+      ${cell(head, fmt(len))}
+      ${cell('Green', depth)}
+      ${h.si != null ? '' : cell('From', esc(tee ? tee.label : '—'))}
+    </div>
+  </div>`;
+}
+
+/* Lay the book out, then measure the ribbon — it is type-sized, so only the DOM
+   knows how tall it came out — and give the map every millimetre that is left. */
+function bookSkeleton() {
+  const g = bookGeom();
+  const book = document.getElementById('book');
+  const set = (k, v) => book.style.setProperty(k, v);
+  set('--pw', g.w + 'mm');
+  set('--ph', g.h + 'mm');
+  set('--pm', g.m + 'mm');
+  set('--cw', g.cw + 'mm');
+  set('--ch', g.ch + 'mm');
+  set('--gap', BOOK_GAP + 'mm');
+  set('--rib-no', (5.4  * g.scale).toFixed(2) + 'mm');
+  set('--rib-k',  (1.75 * g.scale).toFixed(2) + 'mm');
+  set('--rib-v',  (3.05 * g.scale).toFixed(2) + 'mm');
+
+  const cards = COURSE.holes.map((h, i) =>
+    `<div class="card${BOOK.top ? ' rib-top' : ''}">
+       <img data-hole="${i}" alt="Hole ${h.num}">
+       ${ribbonHTML(h)}
+     </div>`);
+
+  let sheets = '';
+  for (let i = 0; i < cards.length; i += BOOK.per) {
+    sheets += `<div class="paper"><div class="sheet${BOOK.per > 1 ? ' twoup' : ''}">`
+            + cards.slice(i, i + BOOK.per).join('')
+            + `</div></div>`;
+  }
+  book.innerHTML = sheets;
+
+  /* Fit the PAGE_AR map into what the ribbon leaves, then shrink the card onto
+     it — whichever of height or width binds. */
+  const ribH = book.querySelector('.ribbon').getBoundingClientRect().height / MM_PX;
+  const availH = Math.max(20, g.ch - ribH - BOOK_GAP - BOOK_SLACK);
+  g.mapW = Math.min(g.cardW, availH * PAGE_AR);
+  g.mapH = g.mapW / PAGE_AR;
+  set('--card-w', g.mapW.toFixed(2) + 'mm');
+  set('--map-h', g.mapH.toFixed(2) + 'mm');
+  return g;
+}
+
+/* Satellite imagery is fetched lazily, so a card can be drawn before its aerial
+   has decoded. Wait for the ones we are about to need. */
+function bookAwaitSat() {
+  if (!S.sat) return Promise.resolve();
+  const pending = COURSE.holes.map(h => h._sat).filter(im => im && !im.complete);
+  if (!pending.length) return Promise.resolve();
+  return Promise.race([
+    Promise.all(pending.map(im => new Promise(r => { im.onload = im.onerror = r; }))),
+    new Promise(r => setTimeout(r, 8000)),
+  ]);
+}
+
+function greyscale(c) {
+  const g = c.getContext('2d');
+  const d = g.getImageData(0, 0, c.width, c.height), px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const y = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+    px[i] = px[i + 1] = px[i + 2] = y;
+  }
+  g.putImageData(d, 0, 0);
+}
+
+async function renderBook() {
+  if (BOOK_BUSY) { BOOK_AGAIN = true; return; }
+  BOOK_BUSY = true;
+  const note = document.getElementById('bkNote');
+  document.getElementById('bkPrint').disabled = true;
+  const g = bookSkeleton();
+  setPageCSS();
+
+  const imgs = [...document.querySelectorAll('#book img')];
+  /* The map box is already PAGE_AR, so its height sets the render size: 300dpi
+     across it, capped — an A4 card would otherwise want a 40-megapixel canvas. */
+  const devH = Math.min(3400, Math.round(g.mapH * BOOK_DPI / 25.4));
+  const dpr  = clamp(devH / BOOK_CSS_H, 1, BOOK_MAX_DPR);
+  const cssH = Math.round(devH / dpr), cssW = Math.round(cssH * PAGE_AR);
+
+  note.textContent = 'rendering…';
+  await bookAwaitSat();
+
+  const off = document.createElement('canvas');
+  off.style.cssText = `position:fixed;left:-99999px;top:0;width:${cssW}px;height:${cssH}px`;
+  document.body.appendChild(off);
+
+  const was = { view: S.view, hole: S.hole, zoom: S.zoom, pan: { ...S.pan },
+                measure: S.measure, teeIdx: S.teeIdx,
+                theme: document.documentElement.dataset.theme };
+  cv = off; ctx = off.getContext('2d');
+  PRINT_DPR = dpr;
+  PRINT_FIT = 0.998;                       // fill the card; the hairline frame is its border
+  if (BOOK.light) document.documentElement.dataset.theme = 'light';
+  S.view = 'hole'; S.measure = null; S.zoom = 1; S.pan = { x: 0, y: 0 };
+
+  try {
+    for (const img of imgs) {
+      S.hole = +img.dataset.hole;
+      S.teeIdx = teeIdxOfSet(COURSE.holes[S.hole]);   // every card drawn off the chosen set
+      draw();
+      if (BOOK.gray) greyscale(off);
+      img.src = off.toDataURL('image/jpeg', 0.92);
+      note.textContent = `rendering… ${S.hole + 1}/${imgs.length}`;
+      await new Promise(r => setTimeout(r, 0));   // let the page breathe
+    }
+  } finally {
+    off.remove();
+    cv = SCREEN_CV; ctx = cv.getContext('2d');
+    PRINT_DPR = PRINT_FIT = null;
+    Object.assign(S, { view: was.view, hole: was.hole, zoom: was.zoom,
+                       pan: was.pan, measure: was.measure, teeIdx: was.teeIdx });
+    if (was.theme) document.documentElement.dataset.theme = was.theme;
+    else delete document.documentElement.dataset.theme;
+    BOOK_BUSY = false;
+    document.getElementById('bkPrint').disabled = false;
+    refresh();
+  }
+
+  const sheets = document.querySelectorAll('#book .paper').length;
+  note.textContent = `${imgs.length} holes · ${sheets} sheet${sheets > 1 ? 's' : ''} · `
+    + `${BOOK.size}${g.land ? ' landscape' : ''} · ${Math.round(devH * 25.4 / g.mapH)}dpi`;
+
+  if (BOOK_AGAIN) { BOOK_AGAIN = false; return renderBook(); }
+}
+
+/* Returns when every card is drawn — `#book` plus headless Chrome's
+   --print-to-pdf can then export the whole book without a click:
+     chrome --headless --print-to-pdf=book.pdf --virtual-time-budget=60000 \
+            --no-pdf-header-footer "yardage_20625.html#book"              */
+function openBook() {
+  document.getElementById('bookWrap').hidden = false;
+  return (window.bookReady = renderBook());
+}
+function closeBook() {
+  document.getElementById('bookWrap').hidden = true;
+  document.getElementById('book').innerHTML = '';   // drop the data URLs
+}
+
+{
+  const bind = (id, prop, read, rerender = true) => {
+    const el = document.getElementById(id);
+    el.addEventListener('change', () => {
+      BOOK[prop] = read(el);
+      if (prop === 'size') { BOOK.margin = PAGES[BOOK.size].m; syncBookBar(); }
+      if (rerender) renderBook(); else setPageCSS();
+    });
+  };
+  bind('bkSize',   'size',   el => el.value);
+  bind('bkPer',    'per',    el => +el.value);
+  bind('bkMargin', 'margin', el => clamp(+el.value, 0, 25));
+  bind('bkLight',  'light',  el => el.checked);
+  bind('bkGray',   'gray',   el => el.checked);
+  bind('bkTop',    'top',    el => el.checked);
+
+  document.getElementById('bookBtn').onclick  = openBook;
+  document.getElementById('bkClose').onclick  = closeBook;
+  document.getElementById('bkPrint').onclick  = () => { if (!BOOK_BUSY) print(); };
+}
+
+function syncBookBar() {
+  document.getElementById('bkSize').value   = BOOK.size;
+  document.getElementById('bkPer').value    = String(BOOK.per);
+  document.getElementById('bkMargin').value = BOOK.margin;
+  document.getElementById('bkLight').checked = BOOK.light;
+  document.getElementById('bkGray').checked  = BOOK.gray;
+  document.getElementById('bkTop').checked   = BOOK.top;
+}
+
+/* ── Boot ─────────────────────────────────────────────────────────────────── */
+document.title = COURSE.name.replace(/ Championship$/, '') + ' — Yardage Book';
+document.getElementById('courseName').textContent = COURSE.name.replace(/ Championship$/, '');
+showZoom();
+document.getElementById('courseSub').textContent =
+  `${COURSE.holes.length} holes · par ${COURSE.holes.reduce((a,h)=>a+h.par,0)} · ${COURSE.player || ''}`;
+
+/* The tee sets the club prints, as one control for the whole book. */
+if (CARD_TEES.length > 1) {
+  const seg = document.getElementById('teeSeg');
+  seg.hidden = false;
+  seg.innerHTML = CARD.tees.map(t =>
+    `<button data-set="${esc(t.name)}" title="${esc(t.name)} tees${
+      t.code != null ? ` (${t.code})` : ''} — ${t.total} ${CARD.units || 'm'}${
+      t.name === PLAYED_TEE ? ', the set you played' : ''}">
+      <i style="background:${teeColor(t.name) || 'var(--line)'}"></i>${esc(t.name)}</button>`).join('');
+  seg.querySelectorAll('button').forEach(b => b.onclick = () => setTeeSet(b.dataset.set));
+  syncTeeSeg();
+  S.teeIdx = teeIdxOfSet(COURSE.holes[S.hole]);
+}
+setUnits(COURSE.usingYards ? 'yd' : 'm');
+syncBookBar();
+setPageCSS();
+
+/* `...html#book` or `#book=A5,2,White` (page size, holes per sheet, tee set)
+   boots into the book — so one command per tee prints one book per tee. */
+if (/^#book/.test(location.hash)) {
+  const [, args = ''] = location.hash.split('=');
+  for (const a of args.split(',').filter(Boolean)) {
+    if (PAGES[a]) { BOOK.size = a; BOOK.margin = PAGES[a].m; }
+    else if (CARD_TEES.includes(a)) { S.teeSet = a; syncTeeSeg(); }
+    else if (/^\d+$/.test(a)) BOOK.per = clamp(+a, 1, 2);
+    else if (a === 'grey' || a === 'gray') BOOK.gray = true;
+    else if (a === 'top') BOOK.top = true;
+  }
+  syncBookBar();
+  openBook();
+}
+</script>

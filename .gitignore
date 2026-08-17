@@ -209,3 +209,10 @@ __marimo__/
 
 # Data
 data.csv
+
+# Shot Scope generated artefacts — regenerate with courses.py / build_viewer.py.
+# These carry embedded aerial imagery and run to megabytes.
+shotscope/.tilecache/
+shotscope/course_*.json
+shotscope/courses_catalog.json
+shotscope/yardage_*.html
