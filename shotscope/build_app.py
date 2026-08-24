@@ -29,9 +29,15 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+
+# A Windows console defaults to cp1252, which cannot print a course name — let
+# alone an arrow. Ask for UTF-8 and fall back to replacing what will not go.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HERE = Path(__file__).parent
 TEMPLATE = HERE / "viewer_template.html"
@@ -125,7 +131,9 @@ def summarise(course: dict) -> dict:
     return {
         "rounds": per_round,
         "stats": {
-            "rounds": len(played),
+            # Not "rounds" — the entry already carries the round list under that
+            # name, and the count is derivable from it.
+            "roundCount": len(played),
             "holesPlayed": holes,
             "toPar": tot("shots") - tot("par"),
             # Per hole, because half these rounds are nine or fewer: a round
@@ -224,7 +232,7 @@ def build(out: Path, courses: list[tuple[Path, dict]], standalone: bool,
         page.write_text(inject({"library": library, "base": "data/"}), encoding="utf-8")
 
     for m in library:
-        played = f"{m['rounds'] and m['holesPlayed']} holes over {len([r for r in m['rounds'] if r['holes']])} rounds"
+        played = f"{m['holesPlayed']} holes over {m['roundCount']} rounds"
         print(f"  {m['id']:>6}  {m['name'][:44]:<44}  par {m['par']}  {played}")
     size = page.stat().st_size / 1e6
     print(f"\n  {len(library)} course{'s' if len(library) != 1 else ''} · "

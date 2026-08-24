@@ -216,3 +216,5 @@ shotscope/.tilecache/
 shotscope/course_*.json
 shotscope/courses_catalog.json
 shotscope/yardage_*.html
+shotscope/golfstats.html
+shotscope/app/

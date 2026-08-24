@@ -1,4 +1,5 @@
-<title>Yardage Book</title>
+<meta charset="utf-8">
+<title>Golf Stats</title>
 <style>
   /* ── Tokens ──────────────────────────────────────────────────────────────
      Light is the bare :root default; dark is redefined at token level only,
@@ -500,6 +501,18 @@
   .card2 .tv { max-height: 340px; overflow: auto; }
   .card2 .foot { margin-top: 9px; font-size: 10.5px; color: var(--muted); }
 
+  .srow { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+  .srow.wide { grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); }
+
+  /* One filter row, above everything it scopes. */
+  .sfilter { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding: 0 1px; }
+  .sfilter select {
+    font: inherit; font-size: 12px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 8px;
+  }
+  .sfilter .grow { flex: 1 1 auto; }
+
   .keys { display: flex; flex-wrap: wrap; gap: 3px 13px; }
   .keys span { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
   .keys i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
@@ -605,7 +618,9 @@
   }
   .sheet {                                  /* its printable content box */
     width: var(--cw); height: var(--ch);
-    display: flex; gap: var(--pm); align-items: center; justify-content: space-evenly;
+    display: grid; gap: var(--pm); place-items: center;
+    grid-template-columns: repeat(var(--cols), 1fr);
+    grid-template-rows: repeat(var(--rows), 1fr);
   }
 
   /* A hole card: the map, and the ribbon that names it. The card is exactly as
@@ -640,11 +655,16 @@
   }
   .ribbon .c .v { font-size: var(--rib-v); font-weight: 700; white-space: nowrap; }
 
-  /* Cut guide, so a 2-up sheet can be trimmed into two cards. */
-  .sheet.twoup { position: relative; }
-  .sheet.twoup::after {
+  /* Cut guides, so a multi-up sheet can be trimmed into cards. The lines sit on
+     the sheet's midlines, which is the middle of the gutter between equal cells. */
+  .sheet.cut-v, .sheet.cut-h { position: relative; }
+  .sheet.cut-v::before {
     content: ''; position: absolute; top: 0; bottom: 0; left: 50%;
     border-left: .2mm dashed #B9B3A8;
+  }
+  .sheet.cut-h::after {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%;
+    border-top: .2mm dashed #B9B3A8;
   }
 
   @media print {
@@ -671,18 +691,24 @@
 
 <div class="app">
   <header>
-    <div class="brand">
+    <!-- The course name is the switcher: clicking it reopens the library. -->
+    <button class="brand" id="brandBtn" title="Switch course (/)">
       <h1 id="courseName">—</h1>
+      <span class="caret">▾</span>
       <span class="sub" id="courseSub"></span>
-    </div>
+    </button>
     <div class="spacer"></div>
+    <div class="seg" role="group" aria-label="View">
+      <button id="tbMap"   aria-pressed="true"  title="Map and yardage pages (m)">Map</button>
+      <button id="tbStats" aria-pressed="false" title="Analysis of every round here (a)">Analysis</button>
+    </div>
     <div class="seg" id="teeSeg" role="group" aria-label="Tees" hidden></div>
     <div class="seg" role="group" aria-label="Units">
       <button id="uM"  aria-pressed="true">Metres</button>
       <button id="uY"  aria-pressed="false">Yards</button>
     </div>
     <div class="seg" role="group" aria-label="Yardage book">
-      <button id="bookBtn" title="Create a printable yardage book (b)">Create yardage book</button>
+      <button id="bookBtn" title="Create a printable yardage book (b)">Yardage book</button>
     </div>
     <div class="seg" role="group" aria-label="Theme">
       <button id="thL" aria-pressed="false" title="Light">Light</button>
@@ -725,10 +751,41 @@
     </div>
 
     <div class="legend" id="legend"></div>
+
+    <!-- The analysis sits in the stage, so the rail and the readout panel keep
+         their meaning across both tabs. -->
+    <div class="stats" id="stats"></div>
   </div>
 
   <aside class="panel" id="panel"></aside>
 </div>
+
+<!-- ── Library ──────────────────────────────────────────────────
+     The front door, and the course switcher afterwards. Type to filter; enter
+     opens the top hit. -->
+<div class="lib" id="lib">
+  <div class="lib-top">
+    <div class="row">
+      <h1>Courses</h1>
+      <span class="lbl" id="libCount"></span>
+    </div>
+    <label class="find">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <input id="libFind" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Search a course…" aria-label="Search courses">
+      <kbd>esc</kbd>
+    </label>
+  </div>
+  <div class="lib-body">
+    <div class="cards" id="libCards"></div>
+    <p class="note hint" id="libHint"></p>
+  </div>
+</div>
+
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
 
 <!-- ── Yardage book ─────────────────────────────────────────────────────────
      Preview is the paper: tweak the bar, hit Print, save as PDF.          -->
@@ -747,7 +804,11 @@
     </div>
     <div class="fld">
       <span class="lbl">Per sheet</span>
-      <select id="bkPer"><option value="1">1 hole</option><option value="2">2 holes</option></select>
+      <select id="bkPer">
+        <option value="1">1 hole</option>
+        <option value="2">2 holes</option>
+        <option value="4">4 holes</option>
+      </select>
     </div>
     <div class="fld">
       <span class="lbl">Margin</span>
@@ -766,7 +827,15 @@
 </div>
 
 <script>
-const COURSE = /*__COURSE_DATA__*/null;
+/* The payload is the whole library now, not one course: `library` is the card
+   for every course on disk, and a course's mapping arrives either baked in
+   (`courses`, the standalone build) or fetched from `base` on demand. */
+const APP = /*__COURSE_DATA__*/null;
+
+/* Not const any more — the app swaps courses. Everything derived from it is
+   re-derived in loadCourse(); nothing else in the viewer had to change, because
+   it all reads through these. */
+let COURSE = null;
 
 /* ── Palette (turf is map content — identical in both themes) ─────────────── */
 const LIE = {
@@ -795,21 +864,20 @@ const teeColor = name => TEE_COLOR[String(name || '').trim().toLowerCase().split
    and the set you are playing off. `teeSet` is one choice for the whole book —
    the overview card, every hole page and the printed ribbon all read it — so
    picking your tees once sets the lengths everywhere. */
-const CARD = COURSE.card || null;
-const CARD_TEES = CARD ? CARD.tees.map(t => t.name) : [];
+let CARD = null, CARD_TEES = [], PLAYED_TEE = null;
 const CARD_TEE = name => CARD ? CARD.tees.find(t => t.name === name) : null;
-const PLAYED_TEE = (COURSE.holes.find(h => (h.card_tees || []).some(t => t.played))
-  ?.card_tees.find(t => t.played) || {}).name || null;
 
 /* ── State ────────────────────────────────────────────────────────────────── */
 const S = {
+  tab: 'map',                      // map | stats — the analysis shares the stage
   view: 'course', hole: 0, units: 'm',
   rings: { tee: true, green: true },
   shots: true, pins: true, focus: true,
   sat: false, satOp: .70,
-  teeSet: PLAYED_TEE || CARD_TEES[0] || null,
+  teeSet: null,
   teeIdx: 0, measure: null, cursor: null,
   zoom: 1, pan: { x: 0, y: 0 },
+  round: 'all',                    // the round the analysis is scoped to
 };
 
 const TEE_RINGS   = [100, 150, 200, 250];
@@ -841,9 +909,10 @@ const SCREEN_CV = cv;
    PRINT_DPR buys print resolution; PRINT_FIT fills the card edge to edge,
    where on screen the page floats in its matte. */
 let PRINT_DPR = null, PRINT_FIT = null;
-const LAT0 = (COURSE.bounds.minLat + COURSE.bounds.maxLat) / 2;
-const LNG0 = (COURSE.bounds.minLng + COURSE.bounds.maxLng) / 2;
-const COSL = Math.cos(LAT0 * Math.PI / 180);
+/* The projection origin is the course's own centre, so it moves with the
+   course. A hole prepared under one origin keeps the points it cached, and
+   loadCourse() restores that course's origin before anything reads them. */
+let LAT0 = 0, LNG0 = 0, COSL = 1;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const proj = (lat, lng) => ({ x: (lng - LNG0) * M_LNG * COSL, y: -(lat - LAT0) * M_LAT });
@@ -1145,21 +1214,36 @@ function veilFor(h, color) {
   h._veil = { key: color, cv: cv2 };
   return cv2;
 }
-COURSE.holes.forEach(prepare);
-
 // Course-wide frame for the overview — 18 overlapping hole crops would seam.
-let COURSE_SAT = null, COURSE_RECT = null;
-{
+let COURSE_SAT = null, COURSE_RECT = null, HAS_SAT = false;
+
+/* Everything above is written against COURSE; this is the one place that sets
+   it. Preparing the holes is the expensive part (a 128×128 raster each), so it
+   is done once per course and cached on the hole — coming back to a course you
+   have already opened is instant. */
+function initCourse() {
   const b = COURSE.bounds;
+  LAT0 = (b.minLat + b.maxLat) / 2;
+  LNG0 = (b.minLng + b.maxLng) / 2;
+  COSL = Math.cos(LAT0 * Math.PI / 180);
+
+  CARD = COURSE.card || null;
+  CARD_TEES = CARD ? CARD.tees.map(t => t.name) : [];
+  PLAYED_TEE = (COURSE.holes.find(h => (h.card_tees || []).some(t => t.played))
+    ?.card_tees.find(t => t.played) || {}).name || null;
+
+  COURSE.holes.forEach(prepare);
+
   const tl = proj(b.maxLat, b.minLng), br = proj(b.minLat, b.maxLng);
   COURSE_RECT = { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
+  COURSE_SAT = null;
   if (COURSE.sat) {
     COURSE_SAT = new Image();
     COURSE_SAT.onload = () => { if (S.sat) draw(); };
     COURSE_SAT.src = COURSE.sat;
   }
+  HAS_SAT = !!COURSE.sat || COURSE.holes.some(h => h.sat);
 }
-const HAS_SAT = !!COURSE.sat || COURSE.holes.some(h => h.sat);
 
 /* ── View transform ───────────────────────────────────────────────────────── */
 let T = { s: 1, rot: 0, rcx: 0, rcy: 0, cx: 0, cy: 0, dpr: 1 };
@@ -1483,6 +1567,9 @@ function drawCourse() {
 }
 
 function draw() {
+  // Nothing to paint before a course is picked, and nothing to paint while the
+  // analysis owns the stage — but the book renders offscreen and must still run.
+  if (!COURSE || (S.tab === 'stats' && !PRINT_DPR)) return;
   // Must agree with the dpr fitBox() bakes into T, or the transform and the
   // bitmap disagree and the render comes out scaled.
   const dpr = PRINT_DPR || window.devicePixelRatio || 1;
@@ -1536,10 +1623,21 @@ const credit = () => COURSE.satCredit
 const scoreClass = (sc, par) => sc == null ? '' :
   sc < par ? 'sc-under' : sc === par ? 'sc-par' : sc === par + 1 ? 'sc-b1' : 'sc-b2';
 
-function holeScore(h) {
-  const s = h.shots.find(x => x.score != null);
-  return s ? s.score : null;
+/* A hole you have played twelve times has no single score, so the viewer shows
+   what it actually has: the one score when there is one round, and the average
+   over every round when there are more. `n` says which you are looking at. */
+function holeStat(h) {
+  const plays = analysis().plays.filter(p => p.num === h.num);
+  if (!plays.length) return null;
+  const avg = plays.reduce((a, p) => a + p.score, 0) / plays.length;
+  return { n: plays.length, avg, best: Math.min(...plays.map(p => p.score)) };
 }
+/* The number to print, and the score class to paint it with. */
+const holeScore = h => { const s = holeStat(h); return s ? s.avg : null; };
+const holeShown = h => {
+  const s = holeStat(h);
+  return s == null ? null : s.n > 1 ? s.avg.toFixed(1) : String(s.avg);
+};
 
 function renderRail() {
   document.getElementById('allBtn').setAttribute('aria-current', S.view === 'course');
@@ -1547,7 +1645,7 @@ function renderRail() {
     const sc = holeScore(h);
     return `<button class="chip" data-h="${i}" aria-current="${S.view === 'hole' && S.hole === i}">
       <span class="chip-n">${h.num}</span>
-      ${sc != null ? `<span class="chip-sc ${scoreClass(sc, h.par)}">${sc}</span>` : ''}
+      ${sc != null ? `<span class="chip-sc ${scoreClass(Math.round(sc), h.par)}">${holeShown(h)}</span>` : ''}
       <span class="chip-par">PAR ${h.par}</span>
     </button>`;
   }).join('');
@@ -1557,7 +1655,14 @@ function renderRail() {
 function renderPanel() {
   const el = document.getElementById('panel');
   if (S.view === 'course') {
-    const r = COURSE.rounds[0];
+    const A = analysis();
+    const ca = agg(A.plays), cf = firOf(A.rounds);
+    // Best round is measured against par, not in strokes: a nine-hole card
+    // would otherwise beat every eighteen you have ever played here.
+    const best = A.rounds.reduce((b, r) => {
+      const ra = agg(r.plays), d = ra.strokes - ra.par;
+      return !b || d < b.d ? { d, r, ra } : b;
+    }, null);
     const totalLen = COURSE.holes.reduce((a, h) => a + (holeLen(h) || 0), 0);
     const totalPar = COURSE.holes.reduce((a, h) => a + h.par, 0);
     const teeName = S.teeSet
@@ -1565,6 +1670,8 @@ function renderPanel() {
 
     // A card's own OUT / IN / TOTAL, so the column adds up the way it does on the
     // starter's sheet rather than to whatever the mapping measured.
+    const multi = A.rounds.length > 1;
+    const dp = v => v == null ? '—' : multi ? v.toFixed(1) : String(v);
     const sub = (span, label) => {
       const holes = COURSE.holes.filter(h => span.includes(h.num));
       const scores = holes.map(holeScore).filter(s => s != null);
@@ -1572,7 +1679,8 @@ function renderPanel() {
       const par = holes.reduce((a, h) => a + h.par, 0);
       return `<tr class="sub"><td class="n">${label}</td><td class="n">${par}</td>
         <td class="n"></td><td class="n">${len ? disp(len).toFixed(0) : '—'}</td>
-        <td class="n">${scores.length === holes.length ? scores.reduce((a, b) => a + b, 0) : '—'}</td>
+        <td class="n">${scores.length === holes.length
+          ? dp(scores.reduce((a, b) => a + b, 0)) : '—'}</td>
         <td class="n"></td></tr>`;
     };
     const nums = COURSE.holes.map(h => h.num);
@@ -1582,9 +1690,9 @@ function renderPanel() {
       return `<tr><td class="n">${h.num}</td><td class="n">${h.par}</td>
         <td class="n" style="color:var(--faint)">${h.si ?? ''}</td>
         <td class="n">${len ? disp(len).toFixed(0) : '—'}</td>
-        <td class="n">${sc ?? '—'}</td>
+        <td class="n">${holeShown(h) ?? '—'}</td>
         <td class="n" style="color:${sc == null ? 'inherit' : sc > h.par ? css('--hot') : css('--grn')}">
-          ${sc == null ? '' : (sc - h.par > 0 ? '+' : '') + (sc - h.par)}</td></tr>`
+          ${sc == null ? '' : sgn(sc - h.par, multi ? 1 : 0)}</td></tr>`
         + (h.num === 9 && nums.includes(18) ? sub([1,2,3,4,5,6,7,8,9], 'OUT') : '');
     }).join('')
       + (nums.includes(18) ? sub([10,11,12,13,14,15,16,17,18], 'IN') : '')
@@ -1601,19 +1709,28 @@ function renderPanel() {
         <span class="len">${disp(totalLen).toFixed(0)}${unit()}</span>
         ${teeName ? `<span class="par">${teeName} tees</span>` : ''}</div></div>
       <div class="grid2">
-        <div class="kv"><div class="lbl">Rounds</div><div class="v">${COURSE.rounds.length}</div></div>
-        <div class="kv"><div class="lbl">Best</div><div class="v">${r ? r.totalShots : '—'}</div></div>
-        <div class="kv"><div class="lbl">Fairways</div><div class="v">${r ? r.fir.toFixed(0) + '%' : '—'}</div></div>
-        <div class="kv"><div class="lbl">Greens</div><div class="v">${r ? r.gir.toFixed(0) + '%' : '—'}</div></div>
+        <div class="kv"><div class="lbl">Rounds</div><div class="v">${A.rounds.length}</div></div>
+        <div class="kv" title="${best ? esc(dateTxt(best.r.date)) + ' — ' + best.ra.strokes
+          + ' strokes over ' + best.ra.n + ' holes' : ''}">
+          <div class="lbl">Best round</div>
+          <div class="v">${best ? sgn(best.d, 0) : '—'}</div></div>
+        <div class="kv"><div class="lbl">Fairways</div><div class="v">${
+          cf ? Math.round(cf.pct) + '%' : '—'}</div></div>
+        <div class="kv"><div class="lbl">Greens</div><div class="v">${pctTxt(ca.gir, ca.n)}</div></div>
       </div>
       <section><h2>Scorecard${CARD ? ` — ${teeName}` : ''}</h2><div class="scroll"><table>
         <thead><tr><th class="n">#</th><th class="n">Par</th><th class="n">SI</th>
-          <th class="n">${unit()}</th><th class="n">Sc</th><th class="n">+/−</th></tr></thead>
+          <th class="n">${unit()}</th><th class="n">${multi ? 'Avg' : 'Sc'}</th>
+          <th class="n">+/−</th></tr></thead>
         <tbody>${rows}</tbody></table></div></section>
       ${teeRows ? `<section><h2>Tees</h2><table>
         <thead><tr><th>Set</th><th class="n">Code</th><th class="n">Total</th></tr></thead>
         <tbody>${teeRows}</tbody></table></section>` : ''}
-      <p class="note">Click any hole on the map or in the rail to open its yardage page.
+      <p class="note">${multi
+        ? `Scores are your average over ${A.rounds.length} rounds here — the
+           <b>Analysis</b> tab breaks them down round by round.`
+        : ''}
+      Click any hole on the map or in the rail to open its yardage page.
       Scroll to zoom, drag to pan.
       Mapping reconstructed from Shot Scope at <code>${COURSE.holes[0].res}×${COURSE.holes[0].res}</code>
       samples per hole. ${CARD
@@ -1628,7 +1745,7 @@ function renderPanel() {
   const h = COURSE.holes[S.hole];
   const tee = selectedTee(h);
   const aim = h._aim || h._green;
-  const sc = holeScore(h);
+  const st = holeStat(h);
   const playLen = tee && tee.card_m != null ? tee.card_m
     : tee && aim ? dist(tee.p, aim) : h.length_m;
   const cur = clamp(S.teeIdx, 0, h._teeOpts.length - 1);
@@ -1650,15 +1767,24 @@ function renderPanel() {
       <td class="n">${tee ? fmt(dist(tee.p, b.p)) : '—'}</td>
       <td class="n">${fmt(b.to_green_m)}</td></tr>`).join('');
 
-  const shots = h.shots.slice().sort((a, b) => a.shot - b.shot).map(s => `
+  // Grouped by round and dated: sorted by stroke number alone, twelve visits to
+  // the same hole come out interleaved and unreadable.
+  const rounds = [...new Set(h.shots.map(s => s.roundID))]
+    .map(rid => h.shots.filter(s => s.roundID === rid).sort((a, b) => a.shot - b.shot))
+    .sort((a, b) => a[0].date < b[0].date ? 1 : -1);
+  const shots = rounds.map(list => (rounds.length > 1
+      ? `<tr><td colspan="4" style="color:var(--faint);padding-top:7px">${
+          esc(dateShort(list[0].date))} · ${list.length} strokes</td></tr>` : '')
+    + list.map(s => `
     <tr><td class="n">${s.shot}</td><td>${s.club_short || s.club}</td>
     <td class="n">${s.distance_m ? disp(s.distance_m).toFixed(0) : '—'}</td>
-    <td style="color:var(--muted)">${s.lie || ''}→${s.toLie || ''}</td></tr>`).join('');
+    <td style="color:var(--muted)">${s.lie || ''}→${s.toLie || ''}</td></tr>`).join('')).join('');
 
   el.innerHTML = `
     <div class="bigno"><b>${h.num}</b><div class="meta">
       <span class="par">PAR ${h.par}${h.si != null ? ` · SI ${h.si}` : ''}${
-        sc != null ? ` · SCORED ${sc}` : ''}</span>
+        st ? st.n > 1 ? ` · AVG ${st.avg.toFixed(1)} · BEST ${st.best}`
+                      : ` · SCORED ${st.avg}` : ''}</span>
       <span class="len">${fmt(playLen)}</span>
       ${tee ? `<span class="par">from ${tee.label}${
         tee.kind === 'map' ? '' : ' tee'}${tee.played ? ' (played)' : ''}</span>` : ''}
@@ -1669,7 +1795,7 @@ function renderPanel() {
         h._greenLo != null ? fmt(h._greenHi - h._greenLo) : '—'}</div></div>
       <div class="kv"><div class="lbl">Bunkers</div><div class="v">${h._bunk.filter(b=>b.cells>=4).length}</div></div>
       <div class="kv"><div class="lbl">Water</div><div class="v">${h._hasWater ? 'Yes' : 'No'}</div></div>
-      <div class="kv"><div class="lbl">Pin seen</div><div class="v">${h.pins.length}×</div></div>
+      <div class="kv"><div class="lbl">Played</div><div class="v">${st ? st.n : 0}×</div></div>
     </div>
 
     ${h._teeOpts.length > 1 ? `<section><h2>Tees</h2><div class="tees">${teeBtns}</div></section>` : ''}
@@ -1718,7 +1844,11 @@ function teeNote(t) {
     + `the marker ${how}.`;
 }
 
-function refresh() { renderRail(); renderPanel(); renderLegend(); draw(); }
+function refresh() {
+  if (!COURSE) return;
+  renderRail(); renderPanel(); renderLegend();
+  if (S.tab === 'stats') renderStats(); else draw();
+}
 
 /* Zoom and pan are per-view framing, not preferences — anything that changes
    what you are looking at drops you back to the fitted view. */
@@ -1726,6 +1856,7 @@ function resetView() { S.zoom = 1; S.pan.x = 0; S.pan.y = 0; showZoom(); }
 const showZoom = () => document.getElementById('zLvl').textContent = S.zoom.toFixed(1) + '×';
 
 function goto(view, hole) {
+  if (S.tab !== 'map') setTab('map');   // picking a hole is asking for the map
   S.view = view;
   if (hole != null) S.hole = hole;
   S.measure = null;
@@ -1762,11 +1893,10 @@ tog('tgShot', () => S.shots,       v => S.shots = v);
 tog('tgPin',  () => S.pins,        v => S.pins = v);
 tog('tgFocus',() => S.focus,       v => S.focus = v);
 
-if (HAS_SAT) {
-  document.getElementById('satRow').hidden = false;
-  tog('tgSat', () => S.sat, v => S.sat = v);
-  document.getElementById('satOp').oninput = e => { S.satOp = e.target.value / 100; draw(); };
-}
+/* Bound once; whether the row is shown is a per-course question — see
+   syncCourseChrome(). */
+tog('tgSat', () => S.sat, v => S.sat = v);
+document.getElementById('satOp').oninput = e => { S.satOp = e.target.value / 100; draw(); };
 
 const setUnits = u => {
   S.units = u;
@@ -1898,13 +2028,22 @@ document.getElementById('zRst').onclick = () => { resetView(); draw(); };
 
 addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) return;
-  const step = h => goto('hole', (S.hole + h + COURSE.holes.length) % COURSE.holes.length);
   // The book is a modal: it owns Escape, and swallows the map's own keys.
   if (!document.getElementById('bookWrap').hidden) {
     if (e.key === 'Escape') closeBook();
     return;
   }
-  if (e.key.toLowerCase() === 'b') openBook();
+  // So is the library — and `/` is how you call it back.
+  if (!document.getElementById('lib').hidden) {
+    if (e.key === 'Escape' && COURSE) closeLib();
+    return;
+  }
+  if (e.key === '/') { e.preventDefault(); openLib(); return; }
+  if (!COURSE) return;
+  const step = h => goto('hole', (S.hole + h + COURSE.holes.length) % COURSE.holes.length);
+  if (e.key.toLowerCase() === 'a') setTab(S.tab === 'stats' ? 'map' : 'stats');
+  else if (e.key.toLowerCase() === 'm') setTab('map');
+  else if (e.key.toLowerCase() === 'b') openBook();
   else if (e.key === 'Escape') goto('course');
   else if (e.key === 'ArrowRight' && S.view === 'hole') step(1);
   else if (e.key === 'ArrowLeft'  && S.view === 'hole') step(-1);
@@ -1915,8 +2054,20 @@ addEventListener('keydown', e => {
 });
 
 // Both of these repaint, so they must stay off the canvas while the book owns it.
-new ResizeObserver(() => { if (!BOOK_BUSY) draw(); }).observe(document.querySelector('.stage'));
+new ResizeObserver(() => { if (!BOOK_BUSY && COURSE) draw(); }).observe(document.querySelector('.stage'));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!BOOK_BUSY) refresh(); });
+
+/* Tabs. The map keeps its own course/hole view underneath, so coming back from
+   the analysis lands you where you left off. */
+function setTab(tab) {
+  S.tab = tab;
+  document.querySelector('.stage').classList.toggle('on-stats', tab === 'stats');
+  document.getElementById('tbMap').setAttribute('aria-pressed', tab === 'map');
+  document.getElementById('tbStats').setAttribute('aria-pressed', tab === 'stats');
+  refresh();
+}
+document.getElementById('tbMap').onclick   = () => setTab('map');
+document.getElementById('tbStats').onclick = () => setTab('stats');
 
 /* ══ Yardage book ═══════════════════════════════════════════════════════════
    Prints the hole cards you have been looking at. Everything the map shows is
@@ -1952,20 +2103,34 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
 /* Paper -> the boxes on it, all in mm. A6 with its default margin is the
    baseline the ribbon's type scales off.
 
-   Two-up turns the paper landscape. A hole card is a tall 0.62, so two of them
-   side by side on portrait paper would each be squeezed to about half the height
-   the sheet has — landscape is the shape that fits two of them, and it is how
-   you would guillotine the sheet into cards anyway. */
+   How many cards fit, and which way up the paper goes. A hole card is a tall
+   0.62, so the grid is chosen to keep each cell roughly that shape — and each
+   grid is one you would guillotine the sheet along anyway:
+
+     2-up  turns the paper landscape and splits it down the middle: two portrait
+           cells side by side. Portrait paper would squeeze each to half height.
+     4-up  keeps the paper portrait and quarters it. Halving both sides leaves a
+           cell the same shape as the sheet, so the card keeps its proportions —
+           an A4 quarter is an A6, which is the one-up page.                   */
+const BOOK_UP = {
+  1: { cols: 1, rows: 1, land: false },
+  2: { cols: 2, rows: 1, land: true  },
+  4: { cols: 2, rows: 2, land: false },
+};
 const BOOK_GAP = 1.6;      // mm between map and ribbon
 const BOOK_SLACK = 0.4;    // mm held back, so rounding cannot spill a page
 
 function bookGeom() {
   const p = PAGES[BOOK.size], m = clamp(BOOK.margin, 0, 25);
-  const land = BOOK.per > 1;
-  const w = land ? p.h : p.w, h = land ? p.w : p.h;
+  const up = BOOK_UP[BOOK.per] || BOOK_UP[1];
+  const w = up.land ? p.h : p.w, h = up.land ? p.w : p.h;
   const cw = w - 2 * m, ch = h - 2 * m;
-  const cardW = (cw - (BOOK.per - 1) * m) / BOOK.per;
-  return { w, h, m, land, cw, ch, cardW, scale: clamp(cardW / 93, 0.8, 2.2) };
+  /* The margin doubles as the gutter, so a cut leaves each card its own margin
+     back — trimmed cards from a 4-up sheet look like the 1-up page. */
+  const cardW = (cw - (up.cols - 1) * m) / up.cols;
+  const cellH = (ch - (up.rows - 1) * m) / up.rows;
+  return { w, h, m, land: up.land, cols: up.cols, rows: up.rows,
+           cw, ch, cardW, cellH, scale: clamp(cardW / 93, 0.8, 2.2) };
 }
 
 /* @page cannot read custom properties in Chrome, so the rule is rewritten. */
@@ -2008,6 +2173,8 @@ function bookSkeleton() {
   set('--pm', g.m + 'mm');
   set('--cw', g.cw + 'mm');
   set('--ch', g.ch + 'mm');
+  set('--cols', String(g.cols));
+  set('--rows', String(g.rows));
   set('--gap', BOOK_GAP + 'mm');
   set('--rib-no', (5.4  * g.scale).toFixed(2) + 'mm');
   set('--rib-k',  (1.75 * g.scale).toFixed(2) + 'mm');
@@ -2019,9 +2186,10 @@ function bookSkeleton() {
        ${ribbonHTML(h)}
      </div>`);
 
+  const cut = (g.cols > 1 ? ' cut-v' : '') + (g.rows > 1 ? ' cut-h' : '');
   let sheets = '';
   for (let i = 0; i < cards.length; i += BOOK.per) {
-    sheets += `<div class="paper"><div class="sheet${BOOK.per > 1 ? ' twoup' : ''}">`
+    sheets += `<div class="paper"><div class="sheet${cut}">`
             + cards.slice(i, i + BOOK.per).join('')
             + `</div></div>`;
   }
@@ -2030,7 +2198,7 @@ function bookSkeleton() {
   /* Fit the PAGE_AR map into what the ribbon leaves, then shrink the card onto
      it — whichever of height or width binds. */
   const ribH = book.querySelector('.ribbon').getBoundingClientRect().height / MM_PX;
-  const availH = Math.max(20, g.ch - ribH - BOOK_GAP - BOOK_SLACK);
+  const availH = Math.max(20, g.cellH - ribH - BOOK_GAP - BOOK_SLACK);
   g.mapW = Math.min(g.cardW, availH * PAGE_AR);
   g.mapH = g.mapW / PAGE_AR;
   set('--card-w', g.mapW.toFixed(2) + 'mm');
@@ -2164,42 +2332,895 @@ function syncBookBar() {
   document.getElementById('bkTop').checked   = BOOK.top;
 }
 
-/* ── Boot ─────────────────────────────────────────────────────────────────── */
-document.title = COURSE.name.replace(/ Championship$/, '') + ' — Yardage Book';
-document.getElementById('courseName').textContent = COURSE.name.replace(/ Championship$/, '');
-showZoom();
-document.getElementById('courseSub').textContent =
-  `${COURSE.holes.length} holes · par ${COURSE.holes.reduce((a,h)=>a+h.par,0)} · ${COURSE.player || ''}`;
+/* ══ Analysis ═══════════════════════════════════════════════════════════════
+   Reads the same COURSE the map draws, so the two can never disagree about
+   what you played. A *play* is one hole in one round; every number on the tab
+   is a fold over a filtered list of them.
 
-/* The tee sets the club prints, as one control for the whole book. */
-if (CARD_TEES.length > 1) {
-  const seg = document.getElementById('teeSeg');
-  seg.hidden = false;
-  seg.innerHTML = CARD.tees.map(t =>
-    `<button data-set="${esc(t.name)}" title="${esc(t.name)} tees${
-      t.code != null ? ` (${t.code})` : ''} — ${t.total} ${CARD.units || 'm'}${
-      t.name === PLAYED_TEE ? ', the set you played' : ''}">
-      <i style="background:${teeColor(t.name) || 'var(--line)'}"></i>${esc(t.name)}</button>`).join('');
-  seg.querySelectorAll('button').forEach(b => b.onclick = () => setTeeSet(b.dataset.set));
-  syncTeeSeg();
-  S.teeIdx = teeIdxOfSet(COURSE.holes[S.hole]);
-}
-setUnits(COURSE.usingYards ? 'yd' : 'm');
-syncBookBar();
-setPageCSS();
+   Colour does two jobs and no more: one blue wherever the question is "how
+   much", and a blue↔red scale pivoting on grey wherever it is "how far from
+   par" — par being the nothing the scale turns on. The map's amber and cyan
+   are left alone; they already mean "from the tee" and "to the green" one tab
+   away, and spending them on a series here would say something untrue.        */
 
-/* `...html#book` or `#book=A5,2,White` (page size, holes per sheet, tee set)
-   boots into the book — so one command per tee prints one book per tee. */
-if (/^#book/.test(location.hash)) {
-  const [, args = ''] = location.hash.split('=');
-  for (const a of args.split(',').filter(Boolean)) {
-    if (PAGES[a]) { BOOK.size = a; BOOK.margin = PAGES[a].m; }
-    else if (CARD_TEES.includes(a)) { S.teeSet = a; syncTeeSeg(); }
-    else if (/^\d+$/.test(a)) BOOK.per = clamp(+a, 1, 2);
-    else if (a === 'grey' || a === 'gray') BOOK.gray = true;
-    else if (a === 'top') BOOK.top = true;
+const PUTTER = 'Putter';
+const SCORE_NAME  = ['Eagle or better', 'Birdie', 'Par', 'Bogey', 'Double bogey', 'Triple+'];
+const SCORE_SHORT = ['Eagle+', 'Birdie', 'Par', 'Bogey', 'Double', 'Triple+'];
+const SCORE_VAR   = ['--sc-eagle', '--sc-birdie', '--sc-par', '--sc-bogey', '--sc-double', '--sc-triple'];
+const bucket = (score, par) => {
+  const d = score - par;
+  return d <= -2 ? 0 : d === -1 ? 1 : d === 0 ? 2 : d === 1 ? 3 : d === 2 ? 4 : 5;
+};
+
+/* Lies in the order you meet them; anything else falls to the end. */
+const LIE_ORDER = ['tee', 'fairway', 'rough', 'bunker', 'water', 'green'];
+/* Shot Scope writes a missing lie three ways — absent, '0' and 'unknown'. They
+   are one thing, and folding them here keeps them one column. */
+const lieKey = k => !k || k === '0' || k === 'unknown' ? 'unknown' : k;
+const lieName = k => LIE_NAME[{ tee:'t', fairway:'f', green:'g', bunker:'b', water:'w', rough:'r' }[k]]
+  || (k === 'unknown' ? 'Unrecorded' : k);
+
+const sgn = (v, d = 1) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
+const pctTxt = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+const dateTxt = s => {
+  const d = new Date(s + 'T00:00:00');
+  return isNaN(d) ? s : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+const dateShort = s => {
+  const d = new Date(s + 'T00:00:00');
+  return isNaN(d) ? s : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+};
+const quant = (sorted, q) => {
+  if (!sorted.length) return null;
+  const i = (sorted.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+};
+
+/* ── The play list ──────────────────────────────────────────────────────────
+   Built once per course, cached on it. Fairways are carried across from the
+   library entry rather than re-derived: Shot Scope's own count is not
+   reproducible from the exported fields, and the dashboard should agree with
+   the app the data came from. Everything hole-level is derived here. */
+function analysis() {
+  if (COURSE._an) return COURSE._an;
+  const meta = (APP.library || []).find(m => m.id === COURSE.courseID) || {};
+  const rmeta = new Map((meta.rounds || []).map(r => [r.id, r]));
+
+  const plays = [];
+  for (const h of COURSE.holes) {
+    const byRound = new Map();
+    for (const s of h.shots) {
+      if (!byRound.has(s.roundID)) byRound.set(s.roundID, []);
+      byRound.get(s.roundID).push(s);
+    }
+    for (const [rid, list] of byRound) {
+      list.sort((a, b) => a.shot - b.shot);
+      const scored = list.find(s => s.score != null);
+      if (!scored) continue;
+      // Green in regulation: on the putting surface with two strokes left for
+      // par. `shot` numbers the stroke that ended there, so it is the count.
+      const reach = list.find(s => s.toLie === 'green');
+      plays.push({
+        rid, date: (rmeta.get(rid) || {}).date || list[0].date,
+        num: h.num, par: h.par, si: h.si ?? null,
+        score: scored.score, toPar: scored.score - h.par,
+        putts: list.filter(s => s.club === PUTTER).length,
+        gir: !!reach && reach.shot <= h.par - 2,
+        shots: list,
+      });
+    }
   }
-  syncBookBar();
-  openBook();
+  plays.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.num - b.num);
+
+  const rounds = [];
+  for (const p of plays) {
+    let r = rounds.find(x => x.id === p.rid);
+    if (!r) rounds.push(r = { ...(rmeta.get(p.rid) || {}), id: p.rid, date: p.date, plays: [] });
+    r.plays.push(p);
+  }
+  return COURSE._an = { plays, rounds, meta };
 }
+
+const scopedPlays  = () => S.round === 'all' ? analysis().plays
+  : analysis().plays.filter(p => p.rid === +S.round);
+const scopedRounds = () => S.round === 'all' ? analysis().rounds
+  : analysis().rounds.filter(r => r.id === +S.round);
+
+function agg(plays) {
+  const a = { n: plays.length, mix: [0, 0, 0, 0, 0, 0], strokes: 0, par: 0,
+              putts: 0, gir: 0, scr: 0, scrN: 0, three: 0, one: 0 };
+  for (const p of plays) {
+    a.mix[bucket(p.score, p.par)]++;
+    a.strokes += p.score; a.par += p.par; a.putts += p.putts;
+    if (p.gir) a.gir++; else { a.scrN++; if (p.toPar <= 0) a.scr++; }
+    if (p.putts >= 3) a.three++;
+    if (p.putts === 1) a.one++;
+  }
+  a.toParPerHole = a.n ? (a.strokes - a.par) / a.n : 0;
+  a.puttsPerHole = a.n ? a.putts / a.n : 0;
+  return a;
+}
+
+function firOf(rounds) {
+  let hit = 0, n = 0, any = false;
+  for (const r of rounds) if (r.fir != null) { hit += r.fir; n += r.firN; any = true; }
+  return any && n ? { hit, n, pct: 100 * hit / n } : null;
+}
+
+function clubStats(plays) {
+  const m = new Map();
+  for (const p of plays) for (const s of p.shots) {
+    if (s.club === PUTTER || !s.distance_m) continue;   // 0 m is a drop, not a strike
+    if (!m.has(s.club)) m.set(s.club, { club: s.club, short: s.club_short || s.club, d: [], tee: 0 });
+    const c = m.get(s.club);
+    c.d.push(s.distance_m);
+    if (s.lie === 'tee') c.tee++;
+  }
+  return [...m.values()].map(c => {
+    c.d.sort((a, b) => a - b);
+    c.n = c.d.length;
+    c.p25 = quant(c.d, .25); c.p50 = quant(c.d, .5); c.p75 = quant(c.d, .75);
+    c.max = c.d[c.d.length - 1];
+    return c;
+  }).sort((a, b) => b.p50 - a.p50);
+}
+
+function lieMatrix(plays) {
+  const rows = new Map(), cols = new Set();
+  for (const p of plays) for (const s of p.shots) {
+    const from = lieKey(s.lie), to = lieKey(s.toLie);
+    if (!rows.has(from)) rows.set(from, new Map());
+    rows.get(from).set(to, (rows.get(from).get(to) || 0) + 1);
+    cols.add(to);
+  }
+  const ord = k => { const i = LIE_ORDER.indexOf(k); return i < 0 ? 99 : i; };
+  return {
+    rows: [...rows.keys()].sort((a, b) => ord(a) - ord(b)),
+    cols: [...cols].sort((a, b) => ord(a) - ord(b)),
+    at: (r, c) => rows.get(r)?.get(c) || 0,
+    sum: r => [...rows.get(r).values()].reduce((x, y) => x + y, 0),
+  };
+}
+
+/* ── Chart plumbing ─────────────────────────────────────────────────────────
+   Plain inline SVG on a nominal viewBox, scaled to the card by CSS. Marks stay
+   thin, the data end of a bar is rounded 4 and the baseline end is square, and
+   fills are separated by 2 units of surface rather than by a stroke. */
+/* A chart is drawn on a viewBox roughly the width it will be shown at, so the
+   browser is not scaling 9px type down to 5px to fit a half-width card. */
+const W_HALF = 430, W_FULL = 880;
+const vv = n => `var(${n})`;
+
+function capBarV(x, y, w, h, r = 4) {            // grows up from a baseline
+  r = Math.max(0, Math.min(r, w / 2, h));
+  return `M${x} ${y + h}V${y + r}q0 ${-r} ${r} ${-r}h${w - 2 * r}q${r} 0 ${r} ${r}V${y + h}Z`;
+}
+function capBarD(x, y, w, h, r = 4) {            // …and down from one
+  r = Math.max(0, Math.min(r, w / 2, h));
+  return `M${x} ${y}v${h - r}q0 ${r} ${r} ${r}h${w - 2 * r}q${r} 0 ${r} ${-r}V${y}Z`;
+}
+function capBarH(x, y, w, h, r = 4) {            // …and rightward
+  r = Math.max(0, Math.min(r, h / 2, w));
+  return `M${x} ${y}h${w - r}q${r} 0 ${r} ${r}v${h - 2 * r}q0 ${r} ${-r} ${r}H${x}Z`;
+}
+
+/* Every chart ships with the same twin: a table of the identical numbers, one
+   toggle away, so no value is locked behind colour or hover. */
+let CARD_SEQ = 0;
+function chartCard(o) {
+  return `<section class="card2" id="c${++CARD_SEQ}"${o.opt ? ` data-optkey="${o.opt}"` : ''}>
+    <header>
+      <h2>${o.title}</h2>
+      ${o.sub ? `<span class="sub">${o.sub}</span>` : ''}
+      <span class="grow"></span>
+      ${(o.tabs || []).map(t => `<button class="tbtn" data-opt="${esc(t.v)}"
+          aria-pressed="${!!t.on}">${esc(t.label)}</button>`).join('')}
+      ${o.table ? `<button class="tbtn" data-tv aria-pressed="false"
+          title="Show the numbers instead">Table</button>` : ''}
+    </header>
+    <div class="plot">${o.plot}</div>
+    ${o.table ? `<div class="tv">${o.table}</div>` : ''}
+    ${o.keys ? `<div class="keys" style="margin-top:9px">${o.keys}</div>` : ''}
+    ${o.foot ? `<p class="foot">${o.foot}</p>` : ''}
+  </section>`;
+}
+const scoreKeys = () => SCORE_NAME.map((nm, i) =>
+  `<span><i style="background:${vv(SCORE_VAR[i])}"></i>${nm}</span>`).join('');
+
+/* ── Scoring mix ────────────────────────────────────────────────────────────
+   An ordered scale of shares, so it is drawn the way ordered shares are: each
+   row centred on its own par segment, under-par running left and over-par
+   right, on one shared scale. How far a row leans is the whole reading. */
+function mixChart(rows, VW = W_HALF) {
+  const R = 22, GAP = 8, PAD_L = 54, PAD_R = 10, TOP = 6;
+  const H = TOP + rows.length * (R + GAP) + 20;
+  const W = VW - PAD_L - PAD_R;
+
+  const share = r => r.mix.map(c => r.n ? 100 * c / r.n : 0);
+  const lefts  = rows.map(r => { const s = share(r); return s[0] + s[1] + s[2] / 2; });
+  const rights = rows.map(r => { const s = share(r); return s[2] / 2 + s[3] + s[4] + s[5]; });
+  const maxL = Math.max(1, ...lefts), maxR = Math.max(1, ...rights);
+  const k = W / (maxL + maxR);
+  const zero = PAD_L + maxL * k;
+
+  let out = `<svg viewBox="0 0 ${VW} ${H}" role="img"
+    aria-label="Share of holes by score relative to par, centred on par">`;
+  // The pivot: a hairline at par, and the two directions named under it.
+  out += `<line class="ax" x1="${zero}" y1="${TOP - 2}" x2="${zero}" y2="${H - 20}"/>`;
+  out += `<text x="${zero - 6}" y="${H - 7}" text-anchor="end">← under par</text>`;
+  out += `<text x="${zero + 6}" y="${H - 7}">over par →</text>`;
+
+  rows.forEach((r, ri) => {
+    const y = TOP + ri * (R + GAP), s = share(r);
+    out += `<text x="${PAD_L - 9}" y="${y + R / 2 + 3.5}" text-anchor="end" class="val">${esc(r.label)}</text>`;
+    out += `<text x="${PAD_L - 9}" y="${y + R / 2 + 14}" text-anchor="end">${r.n}</text>`;
+    let x = zero - lefts[ri] * k;
+    s.forEach((v, i) => {
+      const w = v * k;
+      if (w > 0.35) {
+        const bw = Math.max(1, w - 2);           // 2 units of surface between fills
+        out += `<rect x="${x.toFixed(2)}" y="${y}" width="${bw.toFixed(2)}" height="${R}" rx="2"
+          fill="${vv(SCORE_VAR[i])}" data-tip="<b>${r.mix[i]}</b> of ${r.n} — ${
+          esc(SCORE_NAME[i])} (${Math.round(v)}%)${r.label === 'All holes' ? '' : ' on ' + esc(r.label.toLowerCase())}"/>`;
+        // A count only where it fits with air around it; the rest is in the table.
+        if (bw > 24) out += `<text class="ink" x="${(x + bw / 2).toFixed(2)}" y="${y + R / 2 + 3.5}"
+          text-anchor="middle" fill="${vv(SCORE_VAR[i] + '-ink')}">${r.mix[i]}</text>`;
+      }
+      x += w;
+    });
+  });
+  return out + '</svg>';
+}
+
+/* ── Round by round ─────────────────────────────────────────────────────────
+   One measure at a time on one axis. Two measures of different scale would be
+   two axes, which is a chart that invents a correlation — so it is a toggle. */
+const TREND = {
+  toPar:  { label: 'To par',    fmt: v => sgn(v, 2), axis: v => sgn(v, 1),
+            of: r => { const a = agg(r.plays); return a.toParPerHole; }, zero: true,
+            note: 'strokes over par per hole' },
+  putts:  { label: 'Putts',     fmt: v => v.toFixed(2), axis: v => v.toFixed(1),
+            of: r => agg(r.plays).puttsPerHole, zero: true,
+            note: 'putts per hole' },
+  gir:    { label: 'Greens',    fmt: v => Math.round(v) + '%', axis: v => Math.round(v) + '%',
+            of: r => { const a = agg(r.plays); return a.n ? 100 * a.gir / a.n : 0; }, zero: true,
+            note: 'greens in regulation' },
+  fir:    { label: 'Fairways',  fmt: v => Math.round(v) + '%', axis: v => Math.round(v) + '%',
+            of: r => { const f = firOf([r]); return f ? f.pct : null; }, zero: true,
+            note: 'fairways from the tee' },
+};
+
+function trendChart(rounds, key, VW = W_HALF) {
+  const m = TREND[key];
+  const pts = rounds.map(r => ({ r, v: m.of(r) })).filter(p => p.v != null);
+  if (pts.length < 2) return null;
+
+  const PAD_L = 40, PAD_R = 26, TOP = 14, BOT = 26, H = 190;
+  const W = VW - PAD_L - PAD_R, PH = H - TOP - BOT;
+  const vals = pts.map(p => p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (m.zero) lo = Math.min(lo, 0);
+  if (hi === lo) hi = lo + 1;
+  const padY = (hi - lo) * 0.12;
+  lo -= padY; hi += padY;
+  const X = i => PAD_L + (pts.length === 1 ? W / 2 : W * i / (pts.length - 1));
+  const Y = v => TOP + PH * (1 - (v - lo) / (hi - lo));
+
+  let out = `<svg viewBox="0 0 ${VW} ${H}" role="img"
+    aria-label="${esc(m.label)} by round, oldest first">`;
+  for (let g = 0; g <= 3; g++) {                 // four hairlines, solid, recessive
+    const v = lo + (hi - lo) * g / 3, y = Y(v);
+    out += `<line class="gl" x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${VW - PAD_R}" y2="${y.toFixed(1)}"/>`;
+    out += `<text x="${PAD_L - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${m.axis(v)}</text>`;
+  }
+  out += `<path class="ln" d="${pts.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.v).toFixed(1)).join('')}"/>`;
+
+  pts.forEach((p, i) => {
+    const x = X(i), y = Y(p.v), a = agg(p.r.plays);
+    // The hit area is the whole column, so the target is nowhere near 8px.
+    out += `<rect class="hit" x="${(x - W / pts.length / 2).toFixed(1)}" y="${TOP}"
+      width="${(W / pts.length).toFixed(1)}" height="${PH}"
+      data-tip="<b>${esc(dateTxt(p.r.date))}</b><br>${esc(m.label)} ${m.fmt(p.v)} · ${
+      a.n} holes · ${a.strokes} strokes (${sgn(a.strokes - a.par, 0)})"/>`;
+    out += `<circle class="dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"/>`;
+    // Dates get crowded past a dozen rounds; thin them rather than overlap.
+    if (pts.length <= 8 || i % Math.ceil(pts.length / 7) === 0 || i === pts.length - 1)
+      out += `<text x="${x.toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(dateShort(p.r.date))}</text>`;
+  });
+  // Direct-label the latest — the one point the reader is looking for.
+  const last = pts[pts.length - 1];
+  out += `<text class="val" x="${(X(pts.length - 1) + 8).toFixed(1)}" y="${(Y(last.v) + 3.5).toFixed(1)}"
+    >${m.fmt(last.v)}</text>`;
+  return out + '</svg>';
+}
+
+/* ── Hole difficulty ────────────────────────────────────────────────────────
+   Magnitude, one hue. Bars grow off a par baseline, so a hole you are under on
+   hangs below it. */
+function holeChart(plays, sort, VW = W_FULL) {
+  const by = new Map();
+  for (const p of plays) {
+    if (!by.has(p.num)) by.set(p.num, { num: p.num, par: p.par, si: p.si, list: [] });
+    by.get(p.num).list.push(p);
+  }
+  let rows = [...by.values()].map(h => ({
+    ...h,
+    n: h.list.length,
+    avg: h.list.reduce((a, p) => a + p.toPar, 0) / h.list.length,
+    best: Math.min(...h.list.map(p => p.score)),
+    worst: Math.max(...h.list.map(p => p.score)),
+  }));
+  if (!rows.length) return null;
+  rows.sort(sort === 'hard' ? (a, b) => b.avg - a.avg || a.num - b.num
+                            : (a, b) => a.num - b.num);
+
+  const PAD_L = 40, PAD_R = 12, TOP = 16, BOT = 24, H = 200;
+  const W = VW - PAD_L - PAD_R, PH = H - TOP - BOT;
+  const hi = Math.max(0.6, ...rows.map(r => r.avg));
+  const lo = Math.min(0, ...rows.map(r => r.avg));
+  const Y = v => TOP + PH * (1 - (v - lo) / (hi - lo));
+  const y0 = Y(0);
+  const step = W / rows.length, bw = Math.min(34, step - 6);
+  const worst = rows.reduce((a, b) => b.avg > a.avg ? b : a, rows[0]);
+
+  let out = `<svg viewBox="0 0 ${VW} ${H}" role="img"
+    aria-label="Average strokes over par, by hole">`;
+  for (let g = 0; g <= 3; g++) {
+    const v = lo + (hi - lo) * g / 3, y = Y(v);
+    out += `<line class="gl" x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${VW - PAD_R}" y2="${y.toFixed(1)}"/>`;
+    out += `<text x="${PAD_L - 7}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${sgn(v, 1)}</text>`;
+  }
+  out += `<line class="ax" x1="${PAD_L}" y1="${y0.toFixed(1)}" x2="${VW - PAD_R}" y2="${y0.toFixed(1)}"/>`;
+
+  rows.forEach((r, i) => {
+    const x = PAD_L + i * step + (step - bw) / 2, y = Y(r.avg);
+    const tip = `<b>Hole ${r.num}</b> · par ${r.par}${r.si != null ? ` · SI ${r.si}` : ''}<br>`
+      + `${sgn(r.avg, 2)} over ${r.n} play${r.n > 1 ? 's' : ''} · best ${r.best}, worst ${r.worst}`;
+    out += `<path class="mark" d="${r.avg >= 0 ? capBarV(x, y, bw, y0 - y) : capBarD(x, y0, bw, y - y0)}"
+      data-tip="${tip}"/>`;
+    out += `<rect class="hit" x="${(PAD_L + i * step).toFixed(1)}" y="${TOP}"
+      width="${step.toFixed(1)}" height="${PH}" data-tip="${tip}"/>`;
+    out += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${r.num}</text>`;
+  });
+  // One direct label: the hole that costs the most.
+  const wi = rows.indexOf(worst);
+  out += `<text class="val" x="${(PAD_L + wi * step + step / 2).toFixed(1)}"
+    y="${(Y(worst.avg) - 6).toFixed(1)}" text-anchor="middle">${sgn(worst.avg, 1)}</text>`;
+  return out + '</svg>';
+}
+
+function holeTable(plays) {
+  const by = new Map();
+  for (const p of plays) {
+    if (!by.has(p.num)) by.set(p.num, { num: p.num, par: p.par, si: p.si, list: [] });
+    by.get(p.num).list.push(p);
+  }
+  const rows = [...by.values()].sort((a, b) => a.num - b.num).map(h => {
+    const avg = h.list.reduce((a, p) => a + p.toPar, 0) / h.list.length;
+    const gir = h.list.filter(p => p.gir).length;
+    return `<tr><td class="n">${h.num}</td><td class="n">${h.par}</td>
+      <td class="n" style="color:var(--faint)">${h.si ?? ''}</td>
+      <td class="n">${h.list.length}</td>
+      <td class="n">${(h.list.reduce((a, p) => a + p.score, 0) / h.list.length).toFixed(2)}</td>
+      <td class="n">${sgn(avg, 2)}</td>
+      <td class="n">${Math.min(...h.list.map(p => p.score))}</td>
+      <td class="n">${pctTxt(gir, h.list.length)}</td></tr>`;
+  }).join('');
+  return `<table><thead><tr><th class="n">#</th><th class="n">Par</th><th class="n">SI</th>
+    <th class="n">Plays</th><th class="n">Avg</th><th class="n">To par</th>
+    <th class="n">Best</th><th class="n">GIR</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/* ── Score matrix ───────────────────────────────────────────────────────────
+   The chart and the table at once: every cell carries its own number, and the
+   colour only says how far from par it was. */
+function scoreMatrix(rounds) {
+  const nums = COURSE.holes.map(h => h.num);
+  const head = nums.map(n => `<th>${n}</th>`).join('');
+  const body = rounds.slice().reverse().map(r => {
+    const at = new Map(r.plays.map(p => [p.num, p]));
+    const a = agg(r.plays);
+    const cells = nums.map(n => {
+      const p = at.get(n);
+      if (!p) return `<td title="not played">·</td>`;
+      const b = bucket(p.score, p.par);
+      return `<td style="background:${vv(SCORE_VAR[b])};color:${vv(SCORE_VAR[b] + '-ink')}"
+        data-tip="<b>Hole ${n}</b> · par ${p.par}<br>${p.score} strokes (${sgn(p.toPar, 0)}) · ${
+        p.putts} putt${p.putts === 1 ? '' : 's'}${p.gir ? ' · green in regulation' : ''}"
+        >${p.score}</td>`;
+    }).join('');
+    return `<tr><th class="rh">${esc(dateShort(r.date))}</th>${cells}
+      <td style="background:transparent;color:var(--text)">${sgn(a.strokes - a.par, 0)}</td></tr>`;
+  }).join('');
+  return `<div class="gwrap"><table class="grid">
+    <thead><tr><th class="rh">Hole</th>${head}<th>±</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+/* ── Club distances ─────────────────────────────────────────────────────────
+   What a club actually goes, not what it is supposed to: the middle half of
+   every strike, with the median marked. One hue — these are one measure. */
+function clubChart(clubs, VW = W_FULL) {
+  if (!clubs.length) return null;
+  const R = 18, GAP = 8, PAD_L = 66, PAD_R = 62, TOP = 18, BOT = 24;
+  const H = TOP + clubs.length * (R + GAP) + BOT;
+  const W = VW - PAD_L - PAD_R;
+  const hi = Math.max(...clubs.map(c => c.max)) * 1.02;
+  const X = m => PAD_L + W * m / hi;
+
+  let out = `<svg viewBox="0 0 ${VW} ${H}" role="img"
+    aria-label="Distance by club: middle half of strikes, with the median">`;
+  const stepM = hi > 220 ? 50 : hi > 90 ? 25 : 10;
+  for (let m = 0; m <= hi; m += stepM) {
+    out += `<line class="gl" x1="${X(m).toFixed(1)}" y1="${TOP - 4}" x2="${X(m).toFixed(1)}" y2="${H - BOT + 2}"/>`;
+    out += `<text x="${X(m).toFixed(1)}" y="${H - 7}" text-anchor="middle">${disp(m).toFixed(0)}</text>`;
+  }
+  clubs.forEach((c, i) => {
+    const y = TOP + i * (R + GAP);
+    const x0 = X(c.p25), x1 = X(c.p75), xm = X(c.p50), xx = X(c.max);
+    const tip = `<b>${esc(c.club)}</b> — ${c.n} strike${c.n === 1 ? '' : 's'}${
+      c.tee ? `, ${c.tee} off the tee` : ''}<br>median ${fmt(c.p50)} · middle half ${
+      fmt(c.p25)}–${fmt(c.p75)} · longest ${fmt(c.max)}`;
+    out += `<text x="${PAD_L - 9}" y="${y + R / 2 + 3.5}" text-anchor="end" class="val">${esc(c.short)}</text>`;
+    // The reach out to the longest strike, then the middle half over it.
+    out += `<rect x="${x1.toFixed(1)}" y="${(y + R / 2 - 1).toFixed(1)}"
+      width="${Math.max(0, xx - x1).toFixed(1)}" height="2" fill="${vv('--viz-soft')}" opacity=".7"/>`;
+    out += `<rect class="soft" x="${x0.toFixed(1)}" y="${y}" width="${Math.max(2, x1 - x0).toFixed(1)}"
+      height="${R}" rx="4"/>`;
+    out += `<rect class="mark" x="${(xm - 1).toFixed(1)}" y="${y - 2}" width="2.4" height="${R + 4}" rx="1"/>`;
+    out += `<rect class="hit" x="${PAD_L}" y="${y - GAP / 2}" width="${W}" height="${R + GAP}" data-tip="${tip}"/>`;
+    out += `<text class="val" x="${VW - PAD_R + 7}" y="${y + R / 2 + 3.5}">${fmt(c.p50)}</text>`;
+    out += `<text x="${VW - PAD_R + 7}" y="${y + R / 2 + 13}">${c.n}×</text>`;
+  });
+  out += `<text x="${PAD_L}" y="${8}">${unit()} carried and rolled</text>`;
+  return out + '</svg>';
+}
+
+function clubTable(clubs) {
+  return `<table><thead><tr><th>Club</th><th class="n">Strikes</th><th class="n">Median</th>
+    <th class="n">25th</th><th class="n">75th</th><th class="n">Longest</th></tr></thead><tbody>${
+    clubs.map(c => `<tr><td>${esc(c.club)}</td><td class="n">${c.n}</td>
+      <td class="n">${fmt(c.p50)}</td><td class="n">${fmt(c.p25)}</td>
+      <td class="n">${fmt(c.p75)}</td><td class="n">${fmt(c.max)}</td></tr>`).join('')
+  }</tbody></table>`;
+}
+
+/* ── Where the ball ends up ─────────────────────────────────────────────────
+   A grid of counts, so it is a sequential scale: one hue, light where nothing
+   happened. Each cell keeps its number, which is also the table view. */
+function lieGrid(mx) {
+  if (!mx.rows.length) return '<p class="foot">No lies recorded.</p>';
+  const peak = Math.max(...mx.rows.flatMap(r => mx.cols.map(c => mx.at(r, c))));
+  const step = v => v === 0 ? 0 : Math.min(5, 1 + Math.floor(4 * (v - 1) / Math.max(1, peak - 1)));
+  const head = mx.cols.map(c => `<th>${esc(lieName(c))}</th>`).join('');
+  const body = mx.rows.map(r => {
+    const tot = mx.sum(r);
+    return `<tr><th class="rh">${esc(lieName(r))}</th>${mx.cols.map(c => {
+      const v = mx.at(r, c), s = step(v);
+      return `<td style="background:${vv('--heat-' + s)};color:${vv('--heat-' + s + '-ink')}"
+        data-tip="<b>${v}</b> shot${v === 1 ? '' : 's'} from ${esc(lieName(r).toLowerCase())} to ${
+        esc(lieName(c).toLowerCase())} — ${pctTxt(v, tot)} of shots from there">${v || '·'}</td>`;
+    }).join('')}<td style="background:transparent;color:var(--muted)">${tot}</td></tr>`;
+  }).join('');
+  return `<div class="gwrap"><table class="grid">
+    <thead><tr><th class="rh">from ↓ &nbsp;to →</th>${head}<th>All</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+/* ── Putting ────────────────────────────────────────────────────────────── */
+function puttChart(plays, VW = W_HALF) {
+  const bins = [0, 0, 0, 0, 0];                  // 0, 1, 2, 3, 4+
+  for (const p of plays) bins[Math.min(4, p.putts)]++;
+  const total = plays.length || 1;
+  const PAD_L = 32, PAD_R = 10, TOP = 18, BOT = 24, H = 172;
+  const W = VW - PAD_L - PAD_R, PH = H - TOP - BOT;
+  const hi = Math.max(1, ...bins);
+  const step = W / bins.length, bw = Math.min(64, step - 14);
+  const labels = ['0', '1', '2', '3', '4+'];
+
+  let out = `<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Holes by number of putts">`;
+  for (let g = 0; g <= 2; g++) {
+    const y = TOP + PH * (1 - g / 2);
+    out += `<line class="gl" x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${VW - PAD_R}" y2="${y.toFixed(1)}"/>`;
+    out += `<text x="${PAD_L - 7}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${Math.round(hi * g / 2)}</text>`;
+  }
+  bins.forEach((v, i) => {
+    const h = PH * v / hi, x = PAD_L + i * step + (step - bw) / 2, y = TOP + PH - h;
+    const tip = `<b>${v}</b> hole${v === 1 ? '' : 's'} with ${labels[i]} putt${
+      i === 1 ? '' : 's'} — ${pctTxt(v, total)}`;
+    if (v) out += `<path class="mark" d="${capBarV(x, y, bw, h)}" data-tip="${tip}"/>`;
+    out += `<rect class="hit" x="${(PAD_L + i * step).toFixed(1)}" y="${TOP}" width="${step.toFixed(1)}"
+      height="${PH}" data-tip="${tip}"/>`;
+    out += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${labels[i]} putt${
+      i === 1 ? '' : 's'}</text>`;
+    if (v) out += `<text class="val" x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}"
+      text-anchor="middle">${v}</text>`;
+  });
+  return out + '</svg>';
+}
+
+/* ── The tab ────────────────────────────────────────────────────────────── */
+const VIZ = { trend: 'toPar', holeSort: 'num' };
+
+function renderStats() {
+  const el = document.getElementById('stats');
+  const A = analysis();
+  CARD_SEQ = 0;
+
+  if (!A.plays.length) {
+    el.innerHTML = `<p class="note">No scored rounds on this course yet.</p>`;
+    return;
+  }
+
+  const plays = scopedPlays(), rounds = scopedRounds();
+  const a = agg(plays), fir = firOf(rounds);
+  const clubs = clubStats(plays);
+  const mx = lieMatrix(plays);
+  const one = S.round !== 'all';
+
+  /* One filter row, above everything it scopes. */
+  const opts = [`<option value="all"${one ? '' : ' selected'}>All ${A.rounds.length} round${
+    A.rounds.length === 1 ? '' : 's'}</option>`]
+    .concat(A.rounds.slice().reverse().map(r => {
+      const ra = agg(r.plays);
+      return `<option value="${r.id}"${+S.round === r.id ? ' selected' : ''}>${
+        esc(dateTxt(r.date))} · ${ra.n} holes · ${sgn(ra.strokes - ra.par, 0)}</option>`;
+    })).join('');
+
+  const filter = `<div class="sfilter">
+    <span class="lbl">Rounds</span>
+    <select id="anRound" aria-label="Which rounds to analyse">${opts}</select>
+    <span class="grow"></span>
+    <span class="lbl">${a.n} holes · ${a.strokes} strokes</span>
+  </div>`;
+
+  /* The headline is scoring, normalised per 18 — half these rounds are nine
+     holes or fewer, and a round total would compare a front nine with a full
+     eighteen. */
+  const per18 = a.toParPerHole * 18;
+  const kpi = (v, sub, cls = '') =>
+    `<div class="kpi ${cls}"><div class="v">${v}</div><div class="sub">${sub}</div></div>`;
+  const kpis = `<div class="kpis">
+    ${kpi(sgn(per18, 1), 'to par per 18 holes', 'hero')}
+    ${kpi(`${rounds.length}<small> / ${a.n} holes</small>`, one ? 'round' : 'rounds played')}
+    ${kpi(a.puttsPerHole.toFixed(2), `putts per hole · ${(a.puttsPerHole * 18).toFixed(1)} per 18`)}
+    ${kpi(fir ? Math.round(fir.pct) + '%' : '—', fir ? `fairways · ${fir.hit} of ${fir.n}` : 'fairways')}
+    ${kpi(pctTxt(a.gir, a.n), `greens in regulation · ${a.gir} of ${a.n}`)}
+    ${kpi(pctTxt(a.scr, a.scrN), `scrambled · ${a.scr} of ${a.scrN} missed greens`)}
+  </div>`;
+
+  /* Scoring mix, all holes and then by par — each row centred on its own par. */
+  const mixRow = (label, list) => ({ label, n: list.length, mix: agg(list).mix });
+  const mixRows = [mixRow('All holes', plays)];
+  for (const par of [3, 4, 5]) {
+    const list = plays.filter(p => p.par === par);
+    if (list.length) mixRows.push(mixRow(`Par ${par}`, list));
+  }
+  const mixTable = `<table><thead><tr><th></th><th class="n">Holes</th>${
+    SCORE_SHORT.map(s => `<th class="n">${s}</th>`).join('')}</tr></thead><tbody>${
+    mixRows.map(r => `<tr><td>${r.label}</td><td class="n">${r.n}</td>${
+      r.mix.map(c => `<td class="n">${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+
+  const cards = [];
+  cards.push(chartCard({
+    title: 'How you score', sub: 'share of holes, centred on par',
+    plot: mixChart(mixRows), table: mixTable, keys: scoreKeys(),
+    foot: `${a.mix[2] + a.mix[1] + a.mix[0]} of ${a.n} holes at par or better.`,
+  }));
+
+  const trend = one ? null : trendChart(A.rounds, VIZ.trend);
+  const trendTable = `<table><thead><tr><th>Round</th><th class="n">Holes</th><th class="n">Strokes</th>
+    <th class="n">To par</th><th class="n">Putts</th><th class="n">GIR</th><th class="n">FIR</th>
+    </tr></thead><tbody>${A.rounds.slice().reverse().map(r => {
+      const ra = agg(r.plays), rf = firOf([r]);
+      return `<tr><td>${esc(dateShort(r.date))}</td><td class="n">${ra.n}</td>
+        <td class="n">${ra.strokes}</td><td class="n">${sgn(ra.strokes - ra.par, 0)}</td>
+        <td class="n">${ra.putts}</td><td class="n">${pctTxt(ra.gir, ra.n)}</td>
+        <td class="n">${rf ? Math.round(rf.pct) + '%' : '—'}</td></tr>`;
+    }).join('')}</tbody></table>`;
+  cards.push(chartCard({
+    title: 'Round by round', sub: TREND[VIZ.trend].note,
+    tabs: Object.entries(TREND).map(([k, v]) => ({ v: 'trend:' + k, label: v.label, on: VIZ.trend === k })),
+    plot: trend || `<p class="foot">${one
+      ? 'One round selected — pick “all rounds” to see the trend.'
+      : 'A trend needs at least two rounds here.'}</p>`,
+    table: trendTable,
+    foot: 'Per hole, so a nine-hole round sits beside a full eighteen honestly.',
+  }));
+
+  cards.push(chartCard({
+    title: 'Which holes cost you', sub: 'average strokes over par',
+    tabs: [{ v: 'holeSort:num', label: 'By hole', on: VIZ.holeSort === 'num' },
+           { v: 'holeSort:hard', label: 'Hardest', on: VIZ.holeSort === 'hard' }],
+    plot: holeChart(plays, VIZ.holeSort, W_FULL) || '', table: holeTable(plays),
+  }));
+
+  cards.push(chartCard({
+    title: 'Every hole, every round', sub: 'newest round first',
+    plot: scoreMatrix(rounds), keys: scoreKeys(),
+    foot: 'The last column is that round’s score against par.',
+  }));
+
+  cards.push(chartCard({
+    title: 'What each club goes', sub: 'middle half of strikes, median marked',
+    plot: clubChart(clubs, W_FULL) || '<p class="foot">No distances recorded.</p>',
+    table: clubTable(clubs),
+    foot: `Putts and drops are left out — ${clubs.reduce((n, c) => n + c.n, 0)} strikes counted.`,
+  }));
+
+  cards.push(chartCard({
+    title: 'Where the ball ends up', sub: 'shots from each lie, by what they found',
+    plot: lieGrid(mx),
+    foot: 'Read a row: of every shot you played from there, where it finished.',
+  }));
+
+  cards.push(chartCard({
+    title: 'Putting', sub: `${a.one} one-putts · ${a.three} three-putts or worse`,
+    plot: puttChart(plays),
+    foot: `${pctTxt(a.three, a.n)} of holes cost three putts or more.`,
+  }));
+
+  el.innerHTML = filter + kpis
+    + `<div class="srow wide">${cards[0]}${cards[1]}</div>`
+    + cards[2] + cards[3] + cards[4]
+    + `<div class="srow wide">${cards[5]}${cards[6]}</div>`;
+
+  document.getElementById('anRound').onchange = e => { S.round = e.target.value; renderStats(); };
+  el.querySelectorAll('[data-tv]').forEach(b => b.onclick = () => {
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    b.setAttribute('aria-pressed', on);
+    b.closest('.card2').classList.toggle('as-table', on);
+  });
+  el.querySelectorAll('[data-opt]').forEach(b => b.onclick = () => {
+    const [k, v] = b.dataset.opt.split(':');
+    VIZ[k] = v;
+    renderStats();
+  });
+}
+
+/* One tooltip for the whole tab. Hover enhances; it never carries a value that
+   is not also in the card's table view. */
+{
+  const tip = document.getElementById('tip');
+  let cur = null;
+  const hide = () => { if (cur) { tip.classList.remove('on'); cur = null; } };
+  document.addEventListener('pointermove', e => {
+    const el = e.target.closest?.('[data-tip]');
+    if (!el) return hide();
+    if (el !== cur) { cur = el; tip.innerHTML = el.dataset.tip; }
+    tip.style.left = e.clientX + 'px';
+    tip.style.top = Math.max(28, e.clientY - 12) + 'px';
+    tip.classList.add('on');
+  }, { passive: true });
+  document.addEventListener('pointerdown', hide, { passive: true });
+  addEventListener('blur', hide);
+  document.getElementById('stats').addEventListener('scroll', hide, { passive: true });
+}
+
+/* ══ Library ════════════════════════════════════════════════════════════════
+   The front door with nothing loaded, and the course switcher afterwards. The
+   card is built from the manifest alone, so searching never waits on a course
+   download. */
+const LIB = APP.library || [];
+const CACHE = new Map();
+
+/* A round-by-round trace of scoring, small enough to sit on a card. */
+function spark(m) {
+  const played = (m.rounds || []).filter(r => r.holes);
+  if (!played.length) return '';
+  const W = 104, H = 24, vals = played.map(r => r.toPar / r.holes);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const Y = v => H - 3 - (H - 6) * (hi === lo ? .5 : (v - lo) / (hi - lo));
+  const X = i => vals.length === 1 ? W / 2 : W * i / (vals.length - 1);
+  const d = vals.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join('');
+  return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    ${vals.length > 1 ? `<path d="${d}" fill="none" stroke="var(--viz)" stroke-width="1.6"
+      stroke-linejoin="round"/>` : ''}
+    <circle cx="${X(vals.length - 1).toFixed(1)}" cy="${Y(vals[vals.length - 1]).toFixed(1)}"
+      r="2.6" fill="var(--viz)"/></svg>`;
+}
+
+function libCard(m) {
+  const played = (m.rounds || []).filter(r => r.holes).length;
+  const on = COURSE && COURSE.courseID === m.id;
+  const tag = (s, i = '') => `<span class="tag">${i}${s}</span>`;
+  const num = (v, l) => `<div><span class="v">${v}</span><span class="lbl">${l}</span></div>`;
+  return `<button class="cc${on ? ' on' : ''}" data-id="${m.id}">
+    <div>
+      <h3>${esc(m.name.replace(/ Championship$/, ''))}</h3>
+      <div class="where">${m.holes} holes · par ${m.par}${
+        m.first ? ` · ${esc(dateShort(m.first))} – ${esc(dateShort(m.last))}` : ''}</div>
+    </div>
+    <div class="nums">
+      ${num(played, played === 1 ? 'round' : 'rounds')}
+      ${num(m.toParPerHole == null ? '—' : sgn(m.toParPerHole * 18, 1), 'per 18')}
+      ${num(m.puttsPerHole == null ? '—' : m.puttsPerHole.toFixed(2), 'putts/hole')}
+      ${num(m.gir == null ? '—' : Math.round(m.gir) + '%', 'greens')}
+    </div>
+    <div class="foot">
+      ${(m.tees || []).slice(0, 5).map(t => tag(esc(t),
+         `<i style="background:${teeColor(t) || 'var(--line)'}"></i>`)).join('')}
+      ${m.hasCard ? tag('card') : ''}${m.hasSat ? tag('aerial') : ''}
+      ${spark(m)}
+    </div>
+  </button>`;
+}
+
+function renderLib(q = '') {
+  const needle = q.trim().toLowerCase();
+  const hits = !needle ? LIB.slice() : LIB
+    .map(m => {
+      const hay = [m.name, String(m.id), m.player || '', ...(m.tees || [])].join(' ').toLowerCase();
+      return { m, at: hay.indexOf(needle) };
+    })
+    .filter(x => x.at >= 0)
+    .sort((a, b) => a.at - b.at || a.m.name.localeCompare(b.m.name))
+    .map(x => x.m);
+
+  document.getElementById('libCount').textContent =
+    needle ? `${hits.length} of ${LIB.length}` : `${LIB.length} loaded`;
+  document.getElementById('libCards').innerHTML = hits.length
+    ? hits.map(libCard).join('')
+    : `<p class="none">Nothing here matches “${esc(q)}”. Scrape another course with
+       <code>python courses.py --course &lt;id&gt;</code>, then rebuild.</p>`;
+  document.querySelectorAll('#libCards .cc').forEach(b =>
+    b.onclick = () => openCourse(+b.dataset.id));
+  LIB_HITS = hits;
+}
+let LIB_HITS = [];
+
+function openLib() {
+  document.getElementById('lib').hidden = false;
+  const f = document.getElementById('libFind');
+  renderLib(f.value);
+  f.focus(); f.select();
+}
+function closeLib() {
+  if (!COURSE) return;                 // nothing behind it yet
+  document.getElementById('lib').hidden = true;
+}
+
+/* ══ Loading a course ═══════════════════════════════════════════════════════
+   Baked in for the standalone build, fetched for the served one. Either way it
+   lands in the same cache, so switching back is instant. */
+async function openCourse(id, opts = {}) {
+  const m = LIB.find(x => x.id === +id);
+  if (!m) return;
+  if (COURSE && COURSE.courseID === +id && !opts.force) { closeLib(); return; }
+
+  const hint = document.getElementById('libHint');
+  let data = CACHE.get(String(id)) || (APP.courses || {})[String(id)];
+  if (!data) {
+    hint.textContent = `Loading ${m.name}…`;
+    try {
+      const res = await fetch((APP.base || 'data/') + m.file);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      data = await res.json();
+    } catch (err) {
+      // Opening the served build straight off the disk is the usual cause:
+      // file:// pages are not allowed to read a sibling file.
+      hint.innerHTML = `<b>Could not load ${esc(m.name)}.</b> ${esc(String(err.message || err))}<br>`
+        + (location.protocol === 'file:'
+          ? `This build reads its courses from <code>data/</code>, which a page opened
+             from disk may not do. Serve it —
+             <code>python -m http.server -d ${esc((APP.base || 'data/').replace(/data\/$/, '') || '.')} 8000</code>
+             — or build the single-file version:
+             <code>python build_app.py --standalone</code>.`
+          : `Check that <code>${esc((APP.base || 'data/') + m.file)}</code> is being served.`);
+      return;
+    }
+  }
+  CACHE.set(String(id), data);
+  hint.textContent = '';
+
+  COURSE = data;
+  initCourse();
+
+  // A fresh course means a fresh framing, tee set and analysis scope.
+  Object.assign(S, {
+    view: 'course', hole: 0, measure: null, cursor: null,
+    teeSet: PLAYED_TEE || CARD_TEES[0] || null, teeIdx: 0,
+    sat: false, round: 'all', zoom: 1, pan: { x: 0, y: 0 },
+  });
+  document.getElementById('tgSat').setAttribute('aria-pressed', false);
+  syncCourseChrome();
+  setTab(opts.tab || 'map');
+  document.getElementById('lib').hidden = true;
+  if (!opts.keepHash) writeHash();
+  return data;
+}
+
+/* Header, tee picker and unit default all belong to the course, so they are
+   rebuilt whenever one loads. */
+function syncCourseChrome() {
+  const name = COURSE.name.replace(/ Championship$/, '');
+  document.title = name + ' — Golf Stats';
+  document.getElementById('courseName').textContent = name;
+  document.getElementById('courseSub').textContent =
+    `${COURSE.holes.length} holes · par ${COURSE.holes.reduce((a, h) => a + h.par, 0)}`
+    + ` · ${analysis().rounds.length} round${analysis().rounds.length === 1 ? '' : 's'}`;
+
+  const seg = document.getElementById('teeSeg');
+  if (CARD_TEES.length > 1) {
+    seg.hidden = false;
+    seg.innerHTML = CARD.tees.map(t =>
+      `<button data-set="${esc(t.name)}" title="${esc(t.name)} tees${
+        t.code != null ? ` (${t.code})` : ''} — ${t.total} ${CARD.units || 'm'}${
+        t.name === PLAYED_TEE ? ', the set you played' : ''}">
+        <i style="background:${teeColor(t.name) || 'var(--line)'}"></i>${esc(t.name)}</button>`).join('');
+    seg.querySelectorAll('button').forEach(b => b.onclick = () => setTeeSet(b.dataset.set));
+    syncTeeSeg();
+    S.teeIdx = teeIdxOfSet(COURSE.holes[S.hole]);
+  } else {
+    seg.hidden = true; seg.innerHTML = '';
+  }
+
+  document.getElementById('satRow').hidden = !HAS_SAT;
+  document.getElementById('bookBtn').disabled = false;
+  setUnits(COURSE.usingYards ? 'yd' : 'm');
+  showZoom();
+}
+
+/* ── Routing ────────────────────────────────────────────────────────────────
+   `#20625`, `#20625/analysis`, `#20625/book=A5,2` — so a course, a tab, or a
+   whole printed book is one link. */
+function writeHash() {
+  if (!COURSE) return;
+  const h = '#' + COURSE.courseID + (S.tab === 'stats' ? '/analysis' : '');
+  if (location.hash !== h) history.replaceState(null, '', h);
+}
+
+function readHash() {
+  const parts = decodeURIComponent(location.hash.slice(1)).split('/').filter(Boolean);
+  const out = { id: null, tab: null, book: null };
+  for (const p of parts) {
+    if (/^\d+$/.test(p)) out.id = +p;
+    else if (/^book/.test(p)) out.book = p.split('=')[1] || '';
+    else if (/^(analysis|stats)$/.test(p)) out.tab = 'stats';
+    else if (p === 'map') out.tab = 'map';
+  }
+  return out;
+}
+
+/* ── Boot ─────────────────────────────────────────────────────────────────── */
+{
+  const f = document.getElementById('libFind');
+  f.addEventListener('input', () => renderLib(f.value));
+  f.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && LIB_HITS.length) openCourse(LIB_HITS[0].id);
+  });
+  document.getElementById('brandBtn').onclick = openLib;
+  document.getElementById('libHint').innerHTML =
+    `Every course scraped to disk shows up here — add one with
+     <code>python courses.py --course &lt;id&gt;</code>, then
+     <code>python build_app.py</code>. Press <code>/</code> at any time to come back,
+     <code>a</code> for the analysis, <code>b</code> for the yardage book.`;
+  renderLib();
+  syncBookBar();
+  setPageCSS();
+}
+
+(async () => {
+  const want = readHash();
+  // One course in the library and no route asked for: open it rather than
+  // making you click through a list of one.
+  const id = want.id ?? (LIB.length === 1 ? LIB[0].id : null);
+  if (id == null) { openLib(); return; }
+
+  await openCourse(id, { tab: want.tab || 'map', keepHash: want.book != null });
+  if (!COURSE) { openLib(); return; }
+
+  if (want.book != null) {
+    for (const arg of want.book.split(',').filter(Boolean)) {
+      if (PAGES[arg]) { BOOK.size = arg; BOOK.margin = PAGES[arg].m; }
+      else if (CARD_TEES.includes(arg)) { S.teeSet = arg; syncTeeSeg(); }
+      else if (BOOK_UP[arg]) BOOK.per = +arg;
+      else if (arg === 'grey' || arg === 'gray') BOOK.gray = true;
+      else if (arg === 'top') BOOK.top = true;
+    }
+    syncBookBar();
+    openBook();
+  }
+})();
+
 </script>

@@ -62,6 +62,55 @@ Outputs are written to `graphs/` (PNG) and `tables/` (XLSX).
 
 ---
 
+# Distance and dispersion report (`distance_report.py`)
+
+A 13-page PDF on what each club actually goes and how tightly, built from the same
+`data.xlsx` sheet the R side uses and cross-checked against the Shot Scope round data.
+
+```
+python distance_report.py                      # -> distance_report.pdf
+python distance_report.py --player Seppe --out seppe.pdf
+```
+
+Needs `pandas`, `numpy`, `scipy`, `statsmodels`, `scikit-learn`, `matplotlib` and
+`openpyxl`.
+
+## What is on each page
+
+| Page | |
+|------|--|
+| 1 | The yardage card: median carry, 95% CI, the 80% window, spread, roll and total |
+| 2 | Sample, exclusions and the estimator used for each quantity |
+| 3 | Every shot per club - IQR, p10-p90 and the raw strikes behind them |
+| 4 | Distribution shape: robust vs classical moments, Shapiro-Wilk, Q-Q plots |
+| 5 | Bootstrap CIs on centre and spread, and how many shots each conclusion needs |
+| 6 | Prediction windows and 80/90 tolerance intervals - the carry-over-hazard numbers |
+| 7 | Gapping ladder: P(longer club wins) over every shot pair, per rung |
+| 8 | Two-dimensional dispersion: 50%/90% covariance ellipses, directional bias tested |
+| 9 | Whether offline spread scales with distance - the dispersion cone in degrees |
+| 10 | Variance decomposition: speed vs strike quality, and session vs swing (ICC) |
+| 11 | Distance control on the nominated-target lob wedge blocks - bias and precision |
+| 12 | On-course check against 598 GPS-tracked strokes over 14 rounds |
+| 13 | Ranked conclusions with their statistical warrant, and the measurement plan |
+
+## Decisions the script makes, and why
+
+- **One shot is dropped**, a sand wedge logged at 213.6 km/h of club speed - 52 km/h
+  above the fastest driver swing in the file, so a radar fault rather than a mishit.
+  Nothing else is removed; mishits stay in, because a yardage built on good swings only
+  is a yardage that comes up short.
+- **The lob wedge is split, not pooled.** Both its blocks were hit to a nominated carry
+  (`Goal: carry 30` / `50` in the Note field), so they are two distance-control samples
+  and are analysed as such on page 11, outside the gapping ladder.
+- **On-course lengths are separated by a two-component Gaussian mixture** per club, since
+  the round data mixes full swings with layups and chips. The upper component is compared
+  against the range total.
+- **Any block hit to a nominated target should say so in the Note field.** That is the
+  only thing that makes accuracy - as opposed to precision - measurable, and page 11 is
+  the only page in the report that can currently do it.
+
+---
+
 # Shot Scope course mapping (`shotscope/`)
 
 Where the R side covers launch-monitor shots, this side covers **on-course** play: every
@@ -75,7 +124,8 @@ python tees.py           # recover the tees you played from your tee shots
 python scorecard.py      # fold in the printed card: par, stroke index, every tee set
 python pages.py          # lay out the card each hole is drawn on
 python satellite.py      # bake aerial imagery into that JSON   (optional)
-python build_viewer.py   # emit a standalone page               -> yardage_<id>.html
+python build_app.py      # emit the app over every course        -> app/
+python build_viewer.py   # or one course on its own              -> yardage_<id>.html
 ```
 
 The order matters: the card's tee sets are anchored on the tee you played, pages are framed
@@ -105,8 +155,8 @@ python build_viewer.py --course 20561    # -> yardage_20561.html
 ```
 
 `courses.py --all-played` scrapes every course you have a round on in one pass;
-`build_viewer.py --all` then rebuilds every `course_*.json` sitting on disk, and
-`build_viewer.py --list` shows which those are. `courses.py` folds `tees.py` in
+`build_app.py` then folds every `course_*.json` sitting on disk into one app, and
+`build_viewer.py --all` builds each as its own book instead. Both take `--list`. `courses.py` folds `tees.py` in
 automatically, and `scorecard.py` too when a card for that course is on file, so a fresh
 scrape already knows which tees you played and what the club prints — you only run those two
 by hand to re-derive a course scraped before they existed, or after editing a card.
@@ -124,8 +174,9 @@ would rather change the default than pass the flag every time.
 | `scorecard.py` | Holds the club's printed card and places every tee set on the ground |
 | `pages.py` | Lays out each hole's fixed-ratio card, shared by the viewer and the imagery |
 | `satellite.py` | Downloads aerial imagery, embeds it as data URIs |
-| `build_viewer.py` | Injects the JSON into `viewer_template.html` |
-| `viewer_template.html` | The yardage-book front end (edit this, not the built file) |
+| `build_app.py` | Builds the app over every scraped course — library, analysis, viewer |
+| `build_viewer.py` | The same page for one course on its own |
+| `viewer_template.html` | The front end (edit this, not the built file) |
 
 ## How the mapping works
 
@@ -191,15 +242,74 @@ and the printed ribbon. To add a course, put its card in `CARDS` in `scorecard.p
 par, stroke index, then one length per tee set. The printed OUT / IN / TOTAL go in beside it
 and are asserted against the rows, so a mistyped hole fails loudly instead of quietly.
 
+## The app
+
+`build_app.py` folds every course on disk into one page: a searchable library, an
+analysis tab per course, and the yardage viewer. It builds in two shapes, from the
+same `viewer_template.html`.
+
+```
+python build_app.py                  # app/  — index.html + data/*.json
+python build_app.py --serve          # …and serve it on localhost:8000
+python build_app.py --standalone     # golfstats.html — one file, opens from disk
+python build_app.py --no-sat         # drop the aerials: 5.2 MB -> 0.9 MB
+```
+
+**Served** is the web-tool shape. The page ships with a manifest — the numbers every
+library card shows — and pulls a course's mapping only when you pick it, so a library
+of forty courses still opens instantly. It needs a server: a page opened from `file://`
+is not allowed to read its sibling `data/` folder, and says so if you try.
+
+**Standalone** bakes every course into the HTML, the way a yardage book bakes one. No
+server, but the file grows with the library (5.2 MB for two courses with imagery).
+
+### Library
+
+Every scraped course, with its rounds, scoring per 18, putting, greens, the tee sets it
+knows and a trace of how you have scored there over time. Type to filter on name, ID,
+tee or player; enter opens the top hit. `/` reopens it from anywhere, and the course
+name in the header is the way back.
+
+### Analysis
+
+Scoped by the round picker at the top — all rounds, or one — and computed from the same
+shot data the map draws, so the two cannot disagree.
+
+| | |
+|--|--|
+| **Headline** | to par per 18, rounds, putts per hole, fairways, greens in regulation, scrambling |
+| **How you score** | share of holes by score, centred on par, split out by par 3 / 4 / 5 |
+| **Round by round** | to par, putts, greens or fairways across every round — per hole, so a nine sits beside an eighteen honestly |
+| **Which holes cost you** | average strokes over par per hole, by hole or ranked hardest |
+| **Every hole, every round** | the whole score matrix, one row per round |
+| **What each club goes** | the middle half of every strike with the median marked — what a club *does*, not what it should |
+| **Where the ball ends up** | every shot from each lie, by the lie it found |
+| **Putting** | holes by number of putts |
+
+Every chart has a **Table** toggle showing the same numbers, and hover gives the detail.
+
+Fairways come off Shot Scope's own count rather than being re-derived — its definition
+is not reproducible from the exported fields — so the figure matches the dashboard the
+data came from. Everything else is derived here.
+
+### Links
+
+`#20625` opens a course, `#20625/analysis` its analysis, `#20625/book=A6,White` a
+printed book off the White tees — so any view is one URL.
+
 ## Viewer
 
-`yardage_<id>.html` is fully self-contained (imagery included) and opens straight from disk.
+`yardage_<id>.html` is one course in the same page, fully self-contained (imagery
+included) and opening straight from disk onto that course.
 
 - **Tees** — the header picks the set (White · Yellow · Blue · Red) once for the whole book:
   the scorecard, every hole page, the map marker and the printed ribbon all follow it. The
   set you played is preselected and tagged `played`.
 - **Course view** — all 18 routings composited, with your shot traces and the card: par,
   stroke index, length off the chosen tee, your score, and the card's own OUT / IN / TOTAL.
+  Where you have played a course more than once, the score column is your average over
+  every round (the hole page adds your best), and the rounds / fairways / greens above it
+  are the course's, not one round's. The Analysis tab is where they come apart by round.
 - **Hole view** — rotated so the tee is at the bottom and the green at the top, and framed
   on a fixed-ratio page so every hole prints at the same shape however long it is.
 - **Focus** — only the non-playable ground is dimmed. The hole is sliced across the play
